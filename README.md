@@ -1,350 +1,154 @@
-# AI Image Generation Backend System
+# AI Image Generation Backend - Case Study
 
-A scalable and robust AI image generation backend system built with Python, Firebase Functions, and Firestore. Features a credit-based economy with automatic refund logic, comprehensive APIs for image generation and credit management, and automated weekly reporting.
+This repository contains the solution for the **AI Image Generation Backend System** case study. The system is built entirely with Python on the Firebase platform (Cloud Functions and Firestore) and is designed for scalability, robustness, and maintainability.
 
-## 🏗️ Technical Architecture
+It includes a credit-based economy, RESTful APIs for core operations, AI model simulation with failure handling, and a sophisticated weekly reporting mechanism with anomaly detection.
 
-### Backend Technology Stack
-- **Runtime**: Python 3.13
-- **Cloud Platform**: Firebase Functions
-- **Database**: Firebase Firestore
-- **Testing**: pytest
-- **Local Development**: Firebase Local Emulator Suite
+## Key Features
 
-### System Components
-
-#### 1. Database Schema (Firestore Collections)
-
-**Users Collection (`users`)**
-- Document ID: `userId`
-- Fields: `credits` (Number)
-
-**Users Transactions Subcollection (`users/{userId}/transactions`)**
-- Document ID: Auto-generated
-- Fields:
-  - `type` (String): "deduction" or "refund"
-  - `credits` (Number): Amount of credits
-  - `generationRequestId` (String): Reference to generation request
-  - `timestamp` (Timestamp): Transaction time
-
-**Generation Requests Collection (`generationRequests`)**
-- Document ID: Auto-generated
-- Fields:
-  - `userId` (String): User identifier
-  - `model` (String): "Model A" or "Model B"
-  - `style` (String): Image style (realistic, anime, oil painting, sketch, cyberpunk, watercolor)
-  - `color` (String): Color scheme (vibrant, monochrome, pastel, neon, vintage)
-  - `size` (String): Image dimensions (512x512, 1024x1024, 1024x1792)
-  - `prompt` (String): User's text prompt
-  - `status` (String): "pending", "completed", or "failed"
-  - `imageUrl` (String): Generated image URL (on success)
-  - `cost` (Number): Credits deducted for this request
-  - `createdAt` (Timestamp): Request creation time
-
-**Configuration Collections**
-- **Styles** (`styles`): Valid style options
-- **Colors** (`colors`): Valid color options  
-- **Sizes** (`sizes`): Valid size options with associated credit costs
-
-**Reports Collection (`reports`)**
-- Document ID: Date in YYYY-MM-DD format
-- Fields: Weekly aggregated usage statistics
-
-#### 2. Credit System
-
-**Credit Costs by Image Size:**
-- 512x512: 1 credit
-- 1024x1024: 3 credits
-- 1024x1792: 4 credits
-
-**Transaction Flow:**
-1. **Deduction**: Credits are atomically deducted when request is created
-2. **Generation**: AI model simulation (95% success rate, 5% failure)
-3. **Completion**: On success, request marked complete with image URL
-4. **Refund**: On failure, credits automatically refunded and transaction logged
-
-#### 3. AI Model Simulation
-
-- **Model A**: Returns placeholder URL: `https://storage.googleapis.com/ai-image-gen-backend.appspot.com/placeholders/model_a_placeholder.jpg`
-- **Model B**: Returns placeholder URL: `https://storage.googleapis.com/ai-image-gen-backend.appspot.com/placeholders/model_b_placeholder.jpg`
-- **Failure Rate**: Configurable 5% failure rate for testing refund logic
-
-## 🚀 Setup Instructions
-
-### Prerequisites
-- Node.js (for Firebase CLI)
-- Python 3.13+
-- Git
-
-### 1. Clone Repository
-```bash
-git clone <repository-url>
-cd ai-image-generation-backend
-```
-
-### 2. Install Firebase CLI
-```bash
-npm install -g firebase-tools
-```
-
-### 3. Set Up Python Environment
-```bash
-cd functions
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### 4. Firebase Project Setup (Optional)
-For local development, you can skip Firebase project creation and use the demo project:
-```bash
-# Login to Firebase (optional for local development)
-firebase login
-
-# For production deployment only:
-firebase use --add  # Select your Firebase project
-```
-
-## 🏃‍♂️ Running the Project
-
-### Start the Local Emulator
-```bash
-firebase emulators:start --import=./initial_data
-```
-
-This command:
-- Starts Firestore emulator on port 8080
-- Starts Functions emulator on port 5001
-- Starts Emulator UI on port 4000
-- Imports pre-configured initial data
-
-### Access Points
-- **Emulator UI**: http://localhost:4000
-- **Firestore Emulator**: http://localhost:8080
-- **Functions Base URL**: http://localhost:5001/demo-project/us-central1
-
-## 🧪 Running Tests
-
-### Execute Full Test Suite
-```bash
-# From project root directory
-pytest tests/ -v
-```
-
-### Run Specific Test Categories
-```bash
-# Test credit deduction logic
-pytest tests/test_credit_deduction.py -v
-
-# Test insufficient funds scenarios
-pytest tests/test_insufficient_funds.py -v
-
-# Test refund functionality
-pytest tests/test_refund_on_failure.py -v
-
-# Test input validation
-pytest tests/test_input_validation.py -v
-
-# Test user credits API
-pytest tests/test_get_user_credits.py -v
-
-# Test weekly reporting
-pytest tests/test_weekly_report.py -v
-```
-
-### Test Coverage
-The test suite covers:
-- ✅ Credit deduction and balance verification
-- ✅ Insufficient funds handling
-- ✅ Automatic refund on generation failure
-- ✅ Input validation for all parameters
-- ✅ Transaction history tracking
-- ✅ Weekly report generation and statistics
-- ✅ API error handling and edge cases
-
-## 📡 API Documentation
-
-### 1. Create Generation Request
-
-**Endpoint**: `POST /createGenerationRequest`
-
-**Request Body:**
-```json
-{
-  "userId": "testUser1",
-  "model": "Model A",
-  "style": "realistic",
-  "color": "vibrant", 
-  "size": "1024x1024",
-  "prompt": "A beautiful landscape"
-}
-```
-
-**Success Response (201):**
-```json
-{
-  "generationRequestId": "abc123",
-  "deductedCredits": 3,
-  "imageUrl": "https://storage.googleapis.com/ai-image-gen-backend.appspot.com/placeholders/model_a_placeholder.jpg"
-}
-```
-
-**Error Responses:**
-- **400 Bad Request**: Invalid input parameters
-  ```json
-  {"error": "Invalid style: invalid_style"}
-  ```
-- **402 Payment Required**: Insufficient credits
-  ```json
-  {"error": "Insufficient credits"}
-  ```
-- **404 Not Found**: User not found
-  ```json
-  {"error": "User not found"}
-  ```
-- **500 Internal Server Error**: Generation failure (with refund)
-  ```json
-  {"error": "AI generation failed, credits have been refunded."}
-  ```
-
-### 2. Get User Credits
-
-**Endpoint**: `GET /getUserCredits?userId={userId}`
-
-**Example Request:**
-```
-GET /getUserCredits?userId=testUser1
-```
-
-**Success Response (200):**
-```json
-{
-  "currentCredits": 97,
-  "transactions": [
-    {
-      "id": "trans123",
-      "type": "deduction",
-      "credits": 3,
-      "generationRequestId": "req456",
-      "timestamp": "2024-01-15T10:30:00Z"
-    }
-  ]
-}
-```
-
-**Error Responses:**
-- **400 Bad Request**: Missing userId parameter
-- **404 Not Found**: User not found
-
-### 3. Weekly Report (Scheduled Function)
-
-**Trigger**: Automatic - Every Monday at 9:00 AM UTC
-
-**Function**: `scheduleWeeklyReport`
-
-**Generated Report Structure:**
-```json
-{
-  "startDate": "2024-01-08T00:00:00Z",
-  "endDate": "2024-01-15T00:00:00Z", 
-  "modelStats": {
-    "Model A": {"success": 15, "failure": 1},
-    "Model B": {"success": 8, "failure": 0}
-  },
-  "styleStats": {
-    "realistic": {"count": 12},
-    "anime": {"count": 8}
-  },
-  "sizeStats": {
-    "512x512": {"count": 5},
-    "1024x1024": {"count": 10},
-    "1024x1792": {"count": 8}
-  },
-  "totalCreditsSpent": 67,
-  "totalCreditsRefunded": 3
-}
-```
-
-## 🗃️ Initial Data
-
-The system includes pre-configured test data:
-
-### Test Users
-- **testUser1**: 100 credits
-- **testUser2**: 10 credits
-
-### Valid Options
-- **Models**: Model A, Model B
-- **Styles**: realistic, anime, oil painting, sketch, cyberpunk, watercolor
-- **Colors**: vibrant, monochrome, pastel, neon, vintage
-- **Sizes**: 512x512 (1 credit), 1024x1024 (3 credits), 1024x1792 (4 credits)
-
-## 🔧 Development Features
-
-### Error Handling
-- Comprehensive input validation
-- Atomic transaction operations
-- Automatic credit refunds on failures
-- Graceful error responses with descriptive messages
-
-### Testing Infrastructure
-- Isolated test environment with emulator
-- Automatic data reset between tests
-- Mocking for AI generation simulation
-- Comprehensive test coverage
-
-### Monitoring & Reporting
-- Weekly automated reports
-- Usage statistics by model, style, and size
-- Credit consumption tracking
-- Success/failure rate analysis
-
-## 🚀 Deployment (Optional)
-
-### Deploy to Firebase
-```bash
-firebase deploy --only functions
-```
-
-### Environment Variables
-For production deployment, configure:
-- Firebase project settings
-- Authentication rules
-- Security rules for Firestore
-
-## 🏗️ Architecture Decisions
-
-### Database Design
-- **Subcollections**: Transaction history stored as subcollections for better scalability
-- **Atomic Operations**: Firestore transactions ensure data consistency
-- **Denormalization**: Configuration data stored for fast validation
-
-### Credit System
-- **Upfront Deduction**: Credits deducted immediately to prevent race conditions
-- **Automatic Refunds**: Failed generations trigger immediate refunds
-- **Audit Trail**: Complete transaction history for transparency
-
-### Error Handling
-- **Graceful Degradation**: System continues operation even with partial failures
-- **User-Friendly Messages**: Clear error descriptions for debugging
-- **Rollback Mechanisms**: Failed operations are completely reversed
-
-## 📊 System Monitoring
-
-The weekly reporting system provides insights into:
-- Usage patterns by AI model
-- Popular styles and image sizes  
-- Credit consumption trends
-- System reliability metrics
-- User behavior analytics
-
-## 🔐 Security Considerations
-
-- Input validation prevents malicious requests
-- Firestore security rules can be configured for production
-- Credit system prevents unauthorized usage
-- Transaction logging enables audit capabilities
+-   **Credit-Based Economy**: Manages user credits with atomic deductions for image generation and automated refunds for failures.
+-   **Scalable APIs**: Provides endpoints to create generation requests and query user credit balances and history.
+-   **AI Model Simulation**: Simulates two different AI models (`model-a`, `model-b`) with a configurable failure rate to test system resilience.
+-   **Advanced Scheduled Reporting**: A weekly scheduled function aggregates usage data, calculates success/failure metrics, and performs **anomaly detection** to identify unusual usage patterns.
+-   **Comprehensive Testing**: Includes a suite of automated `pytest` tests covering all key business logic, including credit management, input validation, and report generation.
+-   **Emulator-Ready**: Comes with a pre-configured initial dataset for seamless setup and testing in the Firebase Local Emulator environment.
 
 ---
 
-**Built with ❤️ for scalable AI image generation**
+## Architecture and Design Decisions
+
+This section outlines the key architectural choices made during the development of the system.
+
+### 1. Database Schema (Firestore)
+
+The Firestore database is structured to be both scalable and easy to query.
+
+-   **`users`**: Stores user-specific data, including their current `credits`.
+    -   `/users/{userId}`
+-   **`transactions` (Subcollection)**: Each user has a dedicated `transactions` subcollection. This is a key design decision for scalability. Instead of a single root-level collection, this approach ensures that queries for a user's transaction history remain fast and efficient, regardless of the total number of transactions in the system.
+    -   `/users/{userId}/transactions/{transactionId}`
+-   **`generationRequests`**: A root-level collection to store details of every image generation request, including status (`pending`, `completed`, `failed`), cost, and all user-selected parameters.
+-   **`reports`**: Stores the output of the `scheduleWeeklyReport` function. Each document represents a weekly summary with aggregated metrics and detected anomalies.
+-   **Configuration Collections (`styles`, `colors`, `sizes`)**: These collections store the valid options for generation requests and their associated costs. This makes the system extensible—new options can be added directly to the database without any code changes.
+
+### 2. Core Logic (Firebase Functions)
+
+All business logic is encapsulated within Firebase Functions written in Python.
+
+-   **`createGenerationRequest` (HTTPS Function)**:
+    -   **Atomicity**: Uses a Firestore Transaction (`@firestore.transactional`) to perform the credit deduction and creation of the generation request record as a single, atomic operation. This guarantees that a user's credits are never deducted without a corresponding request record being created.
+    -   **Failure & Refund**: If the AI model simulation fails, a refund is automatically triggered. The refund logic is separated into its own transactional function (`_refund_credits`) to ensure robustness. The request's status is updated to `failed`.
+-   **`getUserCredits` (HTTPS Function)**:
+    -   Retrieves the user's current balance and queries their `transactions` subcollection to provide a clean, user-specific history.
+-   **`scheduleWeeklyReport` (Scheduled Function)**:
+    -   **Time-Scoped Aggregation**: Runs every Monday and processes requests from the last 7 days only, ensuring reports are consistent and not duplicative.
+    -   **Anomaly Detection**: This is a critical feature. The function compares the current week's metrics against the *previous week's report* to detect anomalies like:
+        -   A significant drop in the overall success rate.
+        -   An unusual spike in total requests or credit consumption (e.g., >3x the previous week).
+        -   A sudden increase in the failure rate for a specific model, style, or size.
+    -   The findings are stored in an `anomalies` array within the report document, making it easy to monitor system health.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+-   [Firebase CLI](https://firebase.google.com/docs/cli#install)
+-   [Python 3.10+](https://www.python.org/downloads/)
+-   A Java Development Kit (JDK) is required by the Firebase Emulators.
+
+### Setup and Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://your-repository-link.git
+    cd your-repository-directory
+    ```
+
+2.  **Set up the Python Virtual Environment:**
+    The project is pre-configured to use a virtual environment located in `functions/venv`.
+    ```bash
+    # Create and activate the virtual environment
+    python3 -m venv functions/venv
+    source functions/venv/bin/activate
+
+    # Install dependencies
+    pip install -r functions/requirements.txt
+    ```
+
+### Running the System with Firebase Emulators
+
+The entire system is designed to be run locally using the Firebase Emulator Suite.
+
+1.  **Start the Emulators:**
+    Run the following command from the project root. The `--import` flag loads the predefined user data, styles, colors, and sizes from the `initial_data` directory. Using a demo project ID is recommended for local development.
+
+    ```bash
+    firebase emulators:start --import=./initial_data --project=demo-case-study
+    ```
+
+2.  **Emulator UI:**
+    Once running, you can access the powerful Emulator UI at [http://localhost:4000](http://localhost:4000). Here you can:
+    -   View the Firestore database and see records being created in real-time.
+    -   Monitor logs from the Cloud Functions.
+    -   Trigger functions manually.
+
+---
+
+## API Endpoints & Usage
+
+Here are some `cURL` examples for interacting with the deployed APIs.
+
+*(Note: The port for the functions emulator may vary. Check the output of the `firebase emulators:start` command.)*
+
+### 1. Create Generation Request
+
+```bash
+curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationRequest \
+-H "Content-Type: application/json" \
+-d '{
+    "userId": "test-user-1",
+    "model": "model-a",
+    "style": "anime",
+    "color": "vibrant",
+    "size": "512x512",
+    "prompt": "A cat sitting on a futuristic throne"
+}'
+```
+
+### 2. Get User Credits
+
+```bash
+curl -X GET "http://127.0.0.1:5001/demo-case-study/us-central1/getUserCredits?userId=test-user-1"
+```
+
+### 3. Trigger Weekly Report Manually (for testing)
+
+You can trigger the scheduled function manually via the Emulator UI or its direct endpoint:
+```bash
+curl -X GET "http://127.0.0.1:5001/demo-case-study/us-central1/scheduleWeeklyReport"
+```
+
+---
+
+## Running the Automated Tests
+
+The project includes a comprehensive test suite using `pytest`. The tests run against the live emulators to ensure end-to-end integrity.
+
+1.  **Ensure the emulators are running** (see steps above).
+
+2.  **Run the tests:**
+    Make sure your virtual environment is activated (`source functions/venv/bin/activate`) and run the following command from the project root:
+
+    ```bash
+    pytest
+    ```
+
+    The test suite covers:
+    -   `test_input_validation.py`: Validation of all inputs for `createGenerationRequest`.
+    -   `test_credit_deduction.py`: Correct credit deduction on successful generation.
+    -   `test_refund_on_failure.py`: Correct credit refund when AI simulation fails.
+    -   `test_insufficient_funds.py`: Rejection of requests from users with insufficient credits.
+    -   `test_get_user_credits.py`: Correct retrieval of user balance and transaction history.
+    -   `test_weekly_report.py`: Successful generation and data aggregation of the weekly report.

@@ -1,9 +1,47 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write access on all documents
+
+    // By default, deny all reads and writes from client SDKs.
+    // All data access should be mediated by your backend functions.
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // Allow clients to create new generation requests.
+    // However, they cannot read, update, or delete existing ones.
+    // Status updates and data retrieval must go through your functions.
+    // For a real-world app, this would be locked down further, e.g., `if request.auth != null;`
+    match /generationRequests/{requestId} {
+      allow create: if true;
+    }
+
+    // Configuration collections are public and can be read by clients
+    // to populate UI elements (e.g., dropdowns for styles, colors, sizes).
+    // Writing is disabled to prevent unauthorized changes.
+    match /styles/{styleId} {
+      allow get: if true;
+    }
+    match /colors/{colorId} {
+      allow get: if true;
+    }
+    match /sizes/{sizeId} {
+      allow get: if true;
+    }
+
+    // The following collections are for backend access only.
+    // No client should be able to read or write to them directly.
+
+    // `users` and `transactions` contain sensitive data.
+    // Access is provided securely via the `getUserCredits` function.
+    match /users/{userId}/{document=**} {
+      allow read, write: if false;
+    }
+
+    // `reports` are generated and read by backend processes only.
+    match /reports/{reportId} {
+      allow read, write: if false;
     }
   }
 }

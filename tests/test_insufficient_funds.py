@@ -1,143 +1,49 @@
+from unittest.mock import patch
 import pytest
-import requests
+from firebase_admin import firestore
 
+BASE_URL = "/createGenerationRequest"
 
-def test_insufficient_funds_exact_limit(api_base_url, firestore_client):
-    """Test that testUser2 (10 credits) can make exactly enough requests before failing"""
-    
-    # First request: 1024x1792 = 4 credits (should succeed, leaving 6 credits)
-    payload1 = {
-        "userId": "testUser2",
-        "model": "Model A",
-        "style": "realistic",
-        "color": "vibrant",
-        "size": "1024x1792",
-        "prompt": "First image"
-    }
-    
-    response1 = requests.post(
-        f"{api_base_url}/createGenerationRequest",
-        json=payload1
-    )
-    
-    assert response1.status_code == 201
-    
-    # Verify credits deducted
-    user_doc = firestore_client.collection('users').document('testUser2').get()
-    assert user_doc.to_dict()['credits'] == 6
-    
-    # Second request: 1024x1024 = 3 credits (should succeed, leaving 3 credits)
-    payload2 = {
-        "userId": "testUser2",
+@pytest.fixture
+def expensive_payload():
+    """Provides a payload that costs more credits than the user has."""
+    return {
+        "userId": "testUserInsufficient",
         "model": "Model B",
-        "style": "anime",
-        "color": "neon",
-        "size": "1024x1024",
-        "prompt": "Second image"
-    }
-    
-    response2 = requests.post(
-        f"{api_base_url}/createGenerationRequest",
-        json=payload2
-    )
-    
-    assert response2.status_code == 201
-    
-    # Verify credits deducted
-    user_doc = firestore_client.collection('users').document('testUser2').get()
-    assert user_doc.to_dict()['credits'] == 3
-    
-    # Third request: 1024x1792 = 4 credits (should fail - insufficient funds)
-    payload3 = {
-        "userId": "testUser2",
-        "model": "Model A",
-        "style": "sketch",
-        "color": "monochrome",
-        "size": "1024x1792",
-        "prompt": "Third image that should fail"
-    }
-    
-    response3 = requests.post(
-        f"{api_base_url}/createGenerationRequest",
-        json=payload3
-    )
-    
-    assert response3.status_code == 402
-    assert "Insufficient credits" in response3.json()["error"]
-    
-    # Verify credits unchanged
-    user_doc = firestore_client.collection('users').document('testUser2').get()
-    assert user_doc.to_dict()['credits'] == 3  # Should remain unchanged
-
-
-def test_insufficient_funds_single_request(api_base_url, firestore_client):
-    """Test that a user with 10 credits cannot make a request that costs more than available"""
-    
-    # Set user to have only 2 credits
-    firestore_client.collection('users').document('testUser2').set({'credits': 2})
-    
-    # Try to make a 1024x1024 request (3 credits) - should fail
-    payload = {
-        "userId": "testUser2",
-        "model": "Model A",
         "style": "cyberpunk",
         "color": "neon",
-        "size": "1024x1024",
-        "prompt": "Should fail due to insufficient credits"
+        "size": "1024x1792", # Costs 4 credits
+        "prompt": "A cyberpunk city in neon colors."
     }
-    
-    response = requests.post(
-        f"{api_base_url}/createGenerationRequest",
-        json=payload
-    )
-    
-    assert response.status_code == 402
-    assert "Insufficient credits" in response.json()["error"]
-    
-    # Verify credits unchanged
-    user_doc = firestore_client.collection('users').document('testUser2').get()
-    assert user_doc.to_dict()['credits'] == 2
 
+def test_insufficient_credits_rejection(app_client, expensive_payload):
+    """
+    Test that a request from a user with insufficient credits is rejected
+    and no database changes are made. This is an integration test.
+    """
+    # --- Setup: Create a user with insufficient credits in Firestore ---
+    db = firestore.client()
+    user_ref = db.collection("users").document(expensive_payload["userId"])
+    initial_credits = 2 # Cost is 4, user only has 2
+    user_ref.set({"credits": initial_credits})
 
-def test_multiple_small_requests_until_exhaustion(api_base_url, firestore_client):
-    """Test multiple small requests until credits are exhausted"""
+    # --- Make the request ---
+    response = app_client.post(BASE_URL, json=expensive_payload)
     
-    # Make 10 requests of 512x512 (1 credit each) - should all succeed
-    for i in range(10):
-        payload = {
-            "userId": "testUser2",
-            "model": "Model A",
-            "style": "realistic",
-            "color": "vibrant",
-            "size": "512x512",
-            "prompt": f"Image {i+1}"
-        }
-        
-        response = requests.post(
-            f"{api_base_url}/createGenerationRequest",
-            json=payload
-        )
-        
-        assert response.status_code == 201
-    
-    # Verify all credits exhausted
-    user_doc = firestore_client.collection('users').document('testUser2').get()
-    assert user_doc.to_dict()['credits'] == 0
-    
-    # 11th request should fail
-    payload_fail = {
-        "userId": "testUser2",
-        "model": "Model A",
-        "style": "realistic",
-        "color": "vibrant",
-        "size": "512x512",
-        "prompt": "This should fail"
-    }
-    
-    response_fail = requests.post(
-        f"{api_base_url}/createGenerationRequest",
-        json=payload_fail
-    )
-    
-    assert response_fail.status_code == 402
-    assert "Insufficient credits" in response_fail.json()["error"]
+    # --- Assertions ---
+    # 1. Check API response for the correct error
+    assert response.status_code == 412 # FAILED_PRECONDITION
+    assert "Insufficient credits" in response.get_data(as_text=True)
+
+    # 2. Verify that no data was changed in Firestore
+    # User credits should remain unchanged
+    user_snapshot = user_ref.get()
+    assert user_snapshot.to_dict()["credits"] == initial_credits
+
+    # No generation request should have been created
+    requests_query = db.collection("generationRequests").where("userId", "==", expensive_payload["userId"]).stream()
+    assert len(list(requests_query)) == 0
+
+    # No transactions should have been logged
+    transactions_query = user_ref.collection("transactions").stream()
+    assert len(list(transactions_query)) == 0

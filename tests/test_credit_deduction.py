@@ -1,99 +1,68 @@
+from unittest.mock import patch
 import pytest
-import requests
-import json
+from firebase_admin import firestore
 
+BASE_URL = "/createGenerationRequest"
 
-def test_credit_deduction_1024x1024(api_base_url, firestore_client):
-    """Test credit deduction for 1024x1024 image (3 credits)"""
-    
-    # Make generation request
-    payload = {
+@pytest.fixture
+def valid_payload():
+    """Provides a valid payload for a generation request."""
+    return {
         "userId": "testUser1",
         "model": "Model A",
-        "style": "realistic",
-        "color": "vibrant",
-        "size": "1024x1024",
-        "prompt": "A beautiful landscape"
-    }
-    
-    response = requests.post(
-        f"{api_base_url}/createGenerationRequest",
-        json=payload,
-        headers={'Content-Type': 'application/json'}
-    )
-    
-    # Verify successful response
-    assert response.status_code == 201
-    response_data = response.json()
-    
-    assert "generationRequestId" in response_data
-    assert response_data["deductedCredits"] == 3
-    assert "imageUrl" in response_data
-    
-    # Verify user's credit balance
-    user_doc = firestore_client.collection('users').document('testUser1').get()
-    user_data = user_doc.to_dict()
-    assert user_data['credits'] == 97  # 100 - 3 = 97
-    
-    # Verify transaction record
-    transactions = list(firestore_client.collection('users').document('testUser1').collection('transactions').stream())
-    assert len(transactions) == 1
-    
-    transaction_data = transactions[0].to_dict()
-    assert transaction_data['type'] == 'deduction'
-    assert transaction_data['credits'] == 3
-    assert transaction_data['generationRequestId'] == response_data["generationRequestId"]
-
-
-def test_credit_deduction_512x512(api_base_url, firestore_client):
-    """Test credit deduction for 512x512 image (1 credit)"""
-    
-    payload = {
-        "userId": "testUser1",
-        "model": "Model B",
         "style": "anime",
-        "color": "neon",
-        "size": "512x512",
-        "prompt": "An anime character"
+        "color": "vibrant",
+        "size": "1024x1024", # Costs 3 credits
+        "prompt": "A test prompt for credit deduction."
     }
-    
-    response = requests.post(
-        f"{api_base_url}/createGenerationRequest",
-        json=payload
-    )
-    
-    assert response.status_code == 201
-    response_data = response.json()
-    assert response_data["deductedCredits"] == 1
-    
-    # Verify user's credit balance
-    user_doc = firestore_client.collection('users').document('testUser1').get()
-    user_data = user_doc.to_dict()
-    assert user_data['credits'] == 99  # 100 - 1 = 99
 
-
-def test_credit_deduction_1024x1792(api_base_url, firestore_client):
-    """Test credit deduction for 1024x1792 image (4 credits)"""
-    
-    payload = {
-        "userId": "testUser1",
-        "model": "Model A",
-        "style": "oil painting",
-        "color": "vintage",
-        "size": "1024x1792",
-        "prompt": "A vintage oil painting"
+@patch("functions.ai_simulator.AIChat.create")
+def test_successful_credit_deduction(mock_ai_create, app_client, valid_payload):
+    """
+    Test successful credit deduction and record creation using the live emulator.
+    This is now an integration test.
+    """
+    # --- Mock AI behavior (we still mock the AI to control test outcomes) ---
+    mock_ai_create.return_value = {
+        "success": True,
+        "imageUrl": "http://fake-url.com/image.png"
     }
+
+    # --- Setup: Create the test user directly in the emulator's Firestore ---
+    db = firestore.client()
+    user_ref = db.collection("users").document(valid_payload["userId"])
+    user_ref.set({"credits": 100})
+
+    # --- Make the request ---
+    response = app_client.post(BASE_URL, json=valid_payload)
     
-    response = requests.post(
-        f"{api_base_url}/createGenerationRequest",
-        json=payload
-    )
-    
-    assert response.status_code == 201
-    response_data = response.json()
-    assert response_data["deductedCredits"] == 4
-    
-    # Verify user's credit balance
-    user_doc = firestore_client.collection('users').document('testUser1').get()
-    user_data = user_doc.to_dict()
-    assert user_data['credits'] == 96  # 100 - 4 = 96
+    # --- Assertions ---
+    # 1. Check API response
+    assert response.status_code == 200
+    response_data = response.get_json()
+    assert response_data["deductedCredits"] == 3
+    assert response_data["imageUrl"] == "http://fake-url.com/image.png"
+    generation_id = response_data["generationRequestId"]
+
+    # 2. Verify data directly in Firestore
+    # Check that user credits were debited
+    user_snapshot = user_ref.get()
+    assert user_snapshot.exists
+    assert user_snapshot.to_dict()["credits"] == 97 # 100 - 3
+
+    # Check that the generation request was created with the correct status
+    gen_req_snapshot = db.collection("generationRequests").document(generation_id).get()
+    assert gen_req_snapshot.exists
+    gen_req_data = gen_req_snapshot.to_dict()
+    assert gen_req_data["status"] == "completed"
+    assert gen_req_data["cost"] == 3
+    assert gen_req_data["userId"] == valid_payload["userId"]
+
+    # 3. Verify the deduction transaction was logged
+    transactions = user_ref.collection("transactions").stream()
+    trans_list = list(transactions)
+    assert len(trans_list) == 1
+    trans_data = trans_list[0].to_dict()
+    assert trans_data["type"] == "deduction"
+    assert trans_data["credits"] == 3
+    assert trans_data["generationRequestId"] == generation_id

@@ -1,37 +1,52 @@
 import random
-from typing import Dict, Any
+from enum import Enum
 
 
-def simulate_generation(model: str) -> Dict[str, Any]:
+class ImageModels(Enum):
     """
-    Simulates AI image generation for Model A or Model B.
+    Enumeration for the available AI models.
+    """
+    model_a = "Model A"
+    model_b = "Model B"
+
+
+class AIChat:
+    """
+    Simulates an AI model for image generation with a configurable failure rate.
+    """
     
-    Args:
-        model: The AI model to simulate ("Model A" or "Model B")
+    def __init__(self, model: ImageModels, failure_rate: float = 0.05):
+        """
+        Initializes the simulator with a specific model and failure rate.
         
-    Returns:
-        Dictionary with success status and either imageUrl or error message
-    """
-    # 5% failure rate simulation
-    if random.random() < 0.05:
-        return {
-            "success": False,
-            "error": "Simulated generation failure"
+        Args:
+            model: The AI model to simulate (ImageModels.model_a or ImageModels.model_b).
+            failure_rate: The probability of generation failure (0.0 to 1.0).
+        """
+        if not isinstance(model, ImageModels):
+            raise TypeError("model must be an instance of ImageModels Enum")
+        
+        self.model = model
+        self.failure_rate = failure_rate
+        self.placeholder_urls = {
+            ImageModels.model_a: "https://storage.googleapis.com/proudcity/mebanenc/uploads/2018/02/placeholder-image.png",
+            ImageModels.model_b: "https://www.russorizio.com/wp-content/uploads/2016/07/ef3-placeholder-image.jpg"
         }
-    
-    # Success case - return appropriate placeholder URL for each model
-    if model == "Model A":
+
+    def create(self):
+        """
+        Simulates the image generation process.
+        
+        Returns:
+            A dictionary containing the success status and the image URL or an error message.
+        """
+        if random.random() < self.failure_rate:
+            return {
+                "success": False,
+                "error": "AI generation failed due to a simulated error."
+            }
+        
         return {
             "success": True,
-            "imageUrl": "https://storage.googleapis.com/ai-image-gen-backend.appspot.com/placeholders/model_a_placeholder.jpg"
-        }
-    elif model == "Model B":
-        return {
-            "success": True,
-            "imageUrl": "https://storage.googleapis.com/ai-image-gen-backend.appspot.com/placeholders/model_b_placeholder.jpg"
-        }
-    else:
-        return {
-            "success": False,
-            "error": f"Unknown model: {model}"
+            "imageUrl": self.placeholder_urls[self.model]
         }
