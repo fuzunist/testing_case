@@ -5,33 +5,37 @@ from firebase_admin import firestore
 BASE_URL = "/createGenerationRequest"
 
 @pytest.fixture
-def valid_payload():
-    """Provides a valid payload for a generation request."""
+def valid_payload(managed_user):
+    """
+    Provides a valid payload for a generation request.
+    It also ensures a user is created and cleaned up via the managed_user fixture.
+    """
+    user_id = managed_user("testUserSuccess", credits=100)
     return {
-        "userId": "testUser1",
+        "userId": user_id,
         "model": "Model A",
         "style": "anime",
         "color": "vibrant",
-        "size": "1024x1024", # Costs 3 credits
+        "size": "1024x1024",  # Costs 3 credits
         "prompt": "A test prompt for credit deduction."
     }
 
 @patch("functions.ai_simulator.AIChat.create")
-def test_successful_credit_deduction(mock_ai_create, app_client, valid_payload):
+def test_successful_credit_deduction(mock_ai_create, app_client, db, valid_payload):
     """
     Test successful credit deduction and record creation using the live emulator.
-    This is now an integration test.
+    This test relies on the managed_user fixture (via valid_payload) for setup/teardown.
     """
-    # --- Mock AI behavior (we still mock the AI to control test outcomes) ---
+    # --- Mock AI behavior ---
     mock_ai_create.return_value = {
         "success": True,
         "imageUrl": "http://fake-url.com/image.png"
     }
 
-    # --- Setup: Create the test user directly in the emulator's Firestore ---
-    db = firestore.client()
+    # --- Pre-check (Optional): Verify initial state ---
     user_ref = db.collection("users").document(valid_payload["userId"])
-    user_ref.set({"credits": 100})
+    initial_credits = user_ref.get().to_dict()["credits"]
+    assert initial_credits == 100
 
     # --- Make the request ---
     response = app_client.post(BASE_URL, json=valid_payload)
@@ -48,7 +52,7 @@ def test_successful_credit_deduction(mock_ai_create, app_client, valid_payload):
     # Check that user credits were debited
     user_snapshot = user_ref.get()
     assert user_snapshot.exists
-    assert user_snapshot.to_dict()["credits"] == 97 # 100 - 3
+    assert user_snapshot.to_dict()["credits"] == 97  # 100 - 3
 
     # Check that the generation request was created with the correct status
     gen_req_snapshot = db.collection("generationRequests").document(generation_id).get()

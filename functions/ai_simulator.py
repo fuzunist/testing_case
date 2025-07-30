@@ -1,13 +1,5 @@
 import random
-from enum import Enum
-
-
-class ImageModels(Enum):
-    """
-    Enumeration for the available AI models.
-    """
-    model_a = "Model A"
-    model_b = "Model B"
+from config import ImageModels, AIModelsConfig
 
 
 class AIChat:
@@ -15,7 +7,7 @@ class AIChat:
     Simulates an AI model for image generation with a configurable failure rate.
     """
     
-    def __init__(self, model: ImageModels, failure_rate: float = 0.05):
+    def __init__(self, model: ImageModels, failure_rate: float = AIModelsConfig.DEFAULT_FAILURE_RATE):
         """
         Initializes the simulator with a specific model and failure rate.
         
@@ -28,10 +20,7 @@ class AIChat:
         
         self.model = model
         self.failure_rate = failure_rate
-        self.placeholder_urls = {
-            ImageModels.model_a: "https://storage.googleapis.com/proudcity/mebanenc/uploads/2018/02/placeholder-image.png",
-            ImageModels.model_b: "https://www.russorizio.com/wp-content/uploads/2016/07/ef3-placeholder-image.jpg"
-        }
+        self.placeholder_urls = AIModelsConfig.PLACEHOLDER_URLS
 
     def create(self):
         """

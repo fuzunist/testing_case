@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
 from flask import Request
@@ -7,7 +8,8 @@ from firebase_admin import credentials, firestore
 from firebase_functions import https_fn, options
 from firebase_functions.scheduler_fn import on_schedule, ScheduledEvent
 
-from ai_simulator import AIChat, ImageModels
+from ai_simulator import AIChat
+from config import ImageModels, AnomalyThresholds
 
 options.set_global_options(max_instances=10)
 
@@ -23,8 +25,9 @@ try:
     STYLES = {doc.id for doc in db.collection("styles").stream()}
     COLORS = {doc.id for doc in db.collection("colors").stream()}
     SIZES = {doc.id: doc.to_dict()["credits"] for doc in db.collection("sizes").stream()}
+    logging.info("Successfully loaded styles, colors, and sizes from Firestore.")
 except Exception as e:
-    print(f"Error loading initial data: {e}")
+    logging.critical(f"Could not load initial data from Firestore: {e}", exc_info=True)
     STYLES, COLORS, SIZES = set(), set(), {}
 
 
@@ -62,29 +65,36 @@ def createGenerationRequest(req: https_fn.Request) -> https_fn.Response:
 
     # 3. Firestore Transaction for Atomic Operation
     try:
-        # The transactional function will handle the transaction creation and commit.
         generation_ref = db.collection("generationRequests").document()
 
-        # Run the transaction
+        # Run the transaction by passing the transaction function and its arguments
         image_url = _atomic_deduct_and_generate(
-            user_ref, credit_cost, generation_ref, data
+            transaction=db.transaction(),
+            user_ref=user_ref,
+            credit_cost=credit_cost,
+            generation_ref=generation_ref,
+            data=data,
         )
-        
+
         # 4. Return Success Response
         return https_fn.Response(
-            {
+            json.dumps({
                 "generationRequestId": generation_ref.id,
                 "deductedCredits": credit_cost,
                 "imageUrl": image_url,
-            }
+            }),
+            status=200,
+            mimetype="application/json"
         )
 
     except https_fn.HttpsError as e:
-        # Handle specific errors (e.g., insufficient funds)
+        # Handle specific, known errors (e.g., insufficient funds)
+        logging.warning(f"Handled HttpsError for user {data.get('userId')}: {e.message}")
         return https_fn.Response(e.message, status=e.code)
     except Exception as e:
-        # Handle other potential errors
-        return https_fn.Response(f"An unexpected error occurred: {e}", status=500)
+        # Handle other potential, unexpected errors
+        logging.error(f"Unexpected error in createGenerationRequest for user {data.get('userId')}: {e}", exc_info=True)
+        return https_fn.Response("An unexpected internal error occurred.", status=500)
 
 
 @firestore.transactional
@@ -133,7 +143,8 @@ def _atomic_deduct_and_generate(transaction, user_ref, credit_cost, generation_r
     # --- This part is outside the atomic read/write but part of the function flow ---
     
     # 5. Trigger AI simulation
-    ai_model = AIChat(model=ImageModels(data["model"]))
+    model_enum = next((m for m in ImageModels if m.value == data["model"]), None)
+    ai_model = AIChat(model=model_enum)
     generation_result = ai_model.create()
 
     # 6. Handle generation result
@@ -150,6 +161,9 @@ def _atomic_deduct_and_generate(transaction, user_ref, credit_cost, generation_r
     else:
         # Refund credits on failure
         _refund_credits(user_ref.id, generation_ref.id, credit_cost)
+        db.collection("generationRequests").document(generation_ref.id).update(
+            {"status": "failed", "updatedAt": firestore.SERVER_TIMESTAMP}
+        )
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INTERNAL,
             message="AI generation failed, credits refunded.",
@@ -163,10 +177,8 @@ def _refund_credits(user_id, generation_id, amount):
     """
     user_ref = db.collection("users").document(user_id)
     
-    # Update generation request to "failed"
-    db.collection("generationRequests").document(generation_id).update(
-        {"status": "failed", "updatedAt": firestore.SERVER_TIMESTAMP}
-    )
+    # Note: The generation request status update was moved to the caller
+    # to keep this function focused on the transactional refund part.
 
     # Create a new transaction for the refund
     transaction = db.transaction()
@@ -230,14 +242,17 @@ def getUserCredits(req: https_fn.Request) -> https_fn.Response:
 
         # 5. Return Response
         return https_fn.Response(
-            {
+            json.dumps({
                 "currentCredits": current_credits,
                 "transactions": transactions,
-            }
+            }),
+            status=200,
+            mimetype="application/json"
         )
 
     except Exception as e:
-        return https_fn.Response(f"An unexpected error occurred: {e}", status=500)
+        logging.error(f"Unexpected error in getUserCredits for user {user_id}: {e}", exc_info=True)
+        return https_fn.Response("An unexpected internal error occurred.", status=500)
 
 
 @on_schedule(schedule="every monday 00:00")
@@ -246,7 +261,7 @@ def scheduleWeeklyReport(event: ScheduledEvent) -> dict:
     Aggregates usage data from the last week, detects anomalies by comparing
     with the previous week's report, and saves it to a 'reports' collection.
     """
-    print(f"Starting weekly report generation for event: {event.job_name}")
+    logging.info(f"Starting weekly report generation for event: {event.job_name}")
 
     try:
         # 1. Define the time range for the last week
@@ -325,11 +340,11 @@ def scheduleWeeklyReport(event: ScheduledEvent) -> dict:
         report["generatedAt"] = firestore.SERVER_TIMESTAMP
         report_ref.set(report)
 
-        print(f"Successfully generated and saved report: {report_ref.id}")
+        logging.info(f"Successfully generated and saved report: {report_ref.id}")
         return report
 
     except Exception as e:
-        print(f"Error generating weekly report: {e}")
+        logging.error(f"Error generating weekly report: {e}", exc_info=True)
         raise
 
 def _detect_anomalies(current_metrics: Dict, previous_metrics: Dict) -> List[str]:
@@ -337,24 +352,27 @@ def _detect_anomalies(current_metrics: Dict, previous_metrics: Dict) -> List[str
     anomalies = []
     
     # Anomaly 1: Significant drop in overall success rate
-    if previous_metrics.get("successRate", 100) > 0 and \
-       current_metrics["successRate"] < previous_metrics.get("successRate", 100) * 0.5:
+    prev_success_rate = previous_metrics.get("successRate", 100)
+    if prev_success_rate > 0 and \
+       current_metrics["successRate"] < prev_success_rate * AnomalyThresholds.SUCCESS_RATE_DROP_RATIO:
        anomalies.append(
-           f"Drastic drop in success rate: from {previous_metrics.get('successRate', 100):.2f}% to {current_metrics['successRate']:.2f}%"
+           f"Drastic drop in success rate: from {prev_success_rate:.2f}% to {current_metrics['successRate']:.2f}%"
         )
 
     # Anomaly 2: Unusual spike in total requests
-    if previous_metrics.get("totalRequests", 0) > 10 and \
-       current_metrics["totalRequests"] > previous_metrics["totalRequests"] * 3:
+    prev_total_requests = previous_metrics.get("totalRequests", 0)
+    if prev_total_requests > AnomalyThresholds.MIN_SAMPLES_FOR_ANOMALY and \
+       current_metrics["totalRequests"] > prev_total_requests * AnomalyThresholds.USAGE_SPIKE_MULTIPLIER:
        anomalies.append(
-           f"Unusual spike in total requests: {current_metrics['totalRequests']} this week vs {previous_metrics['totalRequests']} last week."
+           f"Unusual spike in total requests: {current_metrics['totalRequests']} this week vs {prev_total_requests} last week."
         )
 
     # Anomaly 3: Unusual spike in credit consumption
-    if previous_metrics.get("totalCreditsSpent", 0) > 10 and \
-       current_metrics["totalCreditsSpent"] > previous_metrics["totalCreditsSpent"] * 3:
+    prev_credits_spent = previous_metrics.get("totalCreditsSpent", 0)
+    if prev_credits_spent > AnomalyThresholds.MIN_SAMPLES_FOR_ANOMALY and \
+       current_metrics["totalCreditsSpent"] > prev_credits_spent * AnomalyThresholds.USAGE_SPIKE_MULTIPLIER:
        anomalies.append(
-            f"Unusual spike in credit consumption: {current_metrics['totalCreditsSpent']} this week vs {previous_metrics['totalCreditsSpent']} last week."
+            f"Unusual spike in credit consumption: {current_metrics['totalCreditsSpent']} this week vs {prev_credits_spent} last week."
         )
 
     # Anomaly 4: Spike in failure rate for a specific category (model, style, etc.)
@@ -362,11 +380,14 @@ def _detect_anomalies(current_metrics: Dict, previous_metrics: Dict) -> List[str
         if key in previous_metrics:
             for item_name, current_item_data in current_metrics[key].items():
                 previous_item_data = previous_metrics[key].get(item_name)
-                if previous_item_data and previous_item_data.get("total", 0) > 10:
-                    if current_item_data["failureRate"] > previous_item_data.get("failureRate", 0) * 2 and \
-                       current_item_data["failureRate"] > 20: # Only flag if failure rate is significant
+                if previous_item_data and previous_item_data.get("total", 0) > AnomalyThresholds.MIN_SAMPLES_FOR_ANOMALY:
+                    prev_failure_rate = previous_item_data.get("failureRate", 0)
+                    current_failure_rate = current_item_data["failureRate"]
+
+                    if current_failure_rate > prev_failure_rate * AnomalyThresholds.FAILURE_RATE_SPIKE_MULTIPLIER and \
+                       current_failure_rate > AnomalyThresholds.SIGNIFICANT_FAILURE_RATE:
                         anomalies.append(
-                            f"Spike in failure rate for {key} '{item_name}': {current_item_data['failureRate']:.2f}% this week vs {previous_item_data.get('failureRate', 0):.2f}% last week."
+                            f"Spike in failure rate for {key} '{item_name}': {current_failure_rate:.2f}% this week vs {prev_failure_rate:.2f}% last week."
                         )
     
     if not anomalies:
