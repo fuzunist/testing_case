@@ -11,8 +11,8 @@ class ImageModels(Enum):
     Enumeration for the available AI models.
     This is the single source of truth for model names.
     """
-    model_a = "Model A"
-    model_b = "Model B"
+    model_a = "model-a"
+    model_b = "model-b"
 
 logger.info(f"ImageModels enum loaded with values: {[model.value for model in ImageModels]}")
 

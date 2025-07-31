@@ -79,16 +79,39 @@ All business logic is encapsulated within Firebase Functions written in Python.
 
 ### Running the System with Firebase Emulators
 
-The entire system is designed to be run locally using the Firebase Emulator Suite.
+The entire system is designed to be run locally using the Firebase Emulator Suite with Python Functions support.
 
-1.  **Start the Emulators:**
-    Run the following command from the project root. The `--import` flag loads the predefined user data, styles, colors, and sizes from the `initial_data` directory. Using a demo project ID is recommended for local development.
+1.  **Quick Start (Recommended):**
+    Simply run the automated startup script from the project root:
 
     ```bash
+    ./start-emulator.sh
+    ```
+
+    This script will:
+    - Clean up any existing processes
+    - Set up the Python virtual environment
+    - Install all dependencies
+    - Start Python Functions Framework
+    - Start Firebase Emulators with initial data
+    - Verify all services are running
+    - Display test commands
+
+2.  **Manual Start (Alternative):**
+    If you prefer to start services manually:
+
+    ```bash
+    # Terminal 1: Start Python Functions
+    cd functions
+    source venv/bin/activate
+    pip install -r requirements.txt
+    python -m functions_framework --target=main --port=5001
+    
+    # Terminal 2: Start Firebase Emulators
     firebase emulators:start --import=./initial_data --project=demo-case-study
     ```
 
-2.  **Emulator UI:**
+3.  **Emulator UI:**
     Once running, you can access the powerful Emulator UI at [http://localhost:4000](http://localhost:4000). Here you can:
     -   View the Firestore database and see records being created in real-time.
     -   Monitor logs from the Cloud Functions.

@@ -1,0 +1,22 @@
+{
+  "name": "functions",
+  "version": "1.0.0",
+  "description": "AI Image Generation Backend Functions",
+  "scripts": {
+    "build": "./start.sh",
+    "serve": "./start.sh",
+    "watch": "./start.sh",
+    "shell": "firebase functions:shell",
+    "start": "./start.sh",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "18"
+  },
+  "main": "main.py",
+  "dependencies": {},
+  "devDependencies": {},
+  "private": true,
+  "runtime": "python310"
+} 
