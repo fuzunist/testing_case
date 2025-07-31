@@ -1,5 +1,10 @@
+import logging
 from enum import Enum
 
+# Configure logging for config module
+logger = logging.getLogger(__name__)
+
+logger.info("Loading configuration module...")
 
 class ImageModels(Enum):
     """
@@ -8,6 +13,8 @@ class ImageModels(Enum):
     """
     model_a = "Model A"
     model_b = "Model B"
+
+logger.info(f"ImageModels enum loaded with values: {[model.value for model in ImageModels]}")
 
 
 class AnomalyThresholds:
@@ -35,6 +42,13 @@ class AnomalyThresholds:
     # e.g., 2.0 means the failure rate has more than doubled.
     FAILURE_RATE_SPIKE_MULTIPLIER = 2.0
 
+logger.info("AnomalyThresholds loaded with values:")
+logger.info(f"  - SUCCESS_RATE_DROP_RATIO: {AnomalyThresholds.SUCCESS_RATE_DROP_RATIO}")
+logger.info(f"  - USAGE_SPIKE_MULTIPLIER: {AnomalyThresholds.USAGE_SPIKE_MULTIPLIER}")
+logger.info(f"  - MIN_SAMPLES_FOR_ANOMALY: {AnomalyThresholds.MIN_SAMPLES_FOR_ANOMALY}")
+logger.info(f"  - SIGNIFICANT_FAILURE_RATE: {AnomalyThresholds.SIGNIFICANT_FAILURE_RATE}")
+logger.info(f"  - FAILURE_RATE_SPIKE_MULTIPLIER: {AnomalyThresholds.FAILURE_RATE_SPIKE_MULTIPLIER}")
+
 
 class AIModelsConfig:
     """
@@ -47,4 +61,12 @@ class AIModelsConfig:
     PLACEHOLDER_URLS = {
         ImageModels.model_a: "https://storage.googleapis.com/proudcity/mebanenc/uploads/2018/02/placeholder-image.png",
         ImageModels.model_b: "https://www.russorizio.com/wp-content/uploads/2016/07/ef3-placeholder-image.jpg"
-    } 
+    }
+
+logger.info("AIModelsConfig loaded with values:")
+logger.info(f"  - DEFAULT_FAILURE_RATE: {AIModelsConfig.DEFAULT_FAILURE_RATE}")
+logger.info(f"  - PLACEHOLDER_URLS count: {len(AIModelsConfig.PLACEHOLDER_URLS)}")
+for model, url in AIModelsConfig.PLACEHOLDER_URLS.items():
+    logger.debug(f"    - {model.value}: {url}")
+
+logger.info("Configuration module loaded successfully") 
