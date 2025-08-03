@@ -102,7 +102,7 @@ FIRESTORE_EMULATOR_HOST="127.0.0.1:8080" \
 GCLOUD_PROJECT="demo-case-study" \
 GOOGLE_CLOUD_PROJECT="demo-case-study" \
 FIREBASE_AUTH_EMULATOR_HOST="127.0.0.1:9099" \
-python -m functions_framework --target=main --source=functions_wrapper.py --port=5001 --debug &
+python -m functions_framework --target=main --source=main.py --port=5001 --debug &
 FUNCTIONS_PID=$!
 cd ..
 

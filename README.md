@@ -32,9 +32,9 @@ The initial data export includes test users (`testUser1` with 100 credits and `t
 ## Recent Updates & Fixes
 
 ### 🔧 Latest Improvements (Aug 4, 2025)
-1.  **Simplified and Robust Architecture**: Removed the redundant, multi-layered routing logic between `functions_wrapper.py` and `main.py`. All API routing is now cleanly handled within `functions_wrapper.py`, making the architecture more maintainable and easier to understand.
+1.  **Architectural Simplification**: Refactored the file structure for clarity and adherence to common standards. The core business logic now resides in `handlers.py`, the entry point for the Functions Framework is `main.py`, and redundant files have been removed. This results in a more intuitive and maintainable codebase.
 2.  **Flexible Configuration**: Refactored configuration handling (`config.py`) to use environment variables for key parameters like the AI model's failure rate. This moves configuration out of the code, allowing for easier changes in different environments (dev, prod) without requiring a new deployment.
-3.  **Consistent API Responses**: Fixed a critical bug where manually triggering the `scheduleWeeklyReport` endpoint returned an empty response. The issue was traced to an inconsistency in how `on_schedule` and `on_request` functions return response objects. The wrapper was updated to correctly handle the response from the scheduled function, ensuring all endpoints now return proper JSON responses.
+3.  **Consistent API Responses**: Fixed a critical bug where manually triggering the `scheduleWeeklyReport` endpoint returned an empty response.
 4.  **Enhanced Error Handling & Bug Fixes**:
     -   Resolved a `TypeError` in the anomaly detection logic by correcting the class structure in `config.py`.
     -   Added proper HTTP status code mapping for Firebase errors.
@@ -68,9 +68,17 @@ The Firestore database is structured to be both scalable and easy to query.
 -   **`reports`**: Stores the output of the `scheduleWeeklyReport` function. Each document represents a weekly summary with aggregated metrics and detected anomalies.
 -   **Configuration Collections (`styles`, `colors`, `sizes`)**: These collections store the valid options for generation requests and their associated costs. They are automatically imported when the emulator starts. This makes the system extensible—new options can be added directly to the database without any code changes by exporting the data again.
 
-### 2. Core Logic (Firebase Functions)
+### 2. Core Logic & File Structure (Firebase Functions)
 
-All business logic is encapsulated within Firebase Functions written in Python.
+All business logic is encapsulated within Firebase Functions written in Python, following a clean and maintainable structure:
+
+-   **`main.py` (Entry Point)**: This is the main entry point for the Google Functions Framework. It receives all incoming HTTP requests and routes them to the appropriate handler function. It adapts the Flask-based request into a format that the Firebase Functions can understand.
+-   **`handlers.py` (Business Logic)**: This file contains the core application logic for each of the main API endpoints:
+    -   `createGenerationRequest`: Handles request validation, atomic credit deduction (using Firestore Transactions), triggers the AI simulation, and manages the refund process on failure.
+    -   `getUserCredits`: Retrieves user credit balances and their transaction history.
+    -   `scheduleWeeklyReport`: Contains the logic for aggregating weekly data, performing anomaly detection, and saving the final report.
+-   **`config.py`**: Centralizes all application configuration, such as AI model details, anomaly detection thresholds, and image generation options. It is designed to be flexible, pulling sensitive or environment-specific values from environment variables.
+-   **`ai_simulator.py`**: A simple module that simulates the behavior of the AI models, including a configurable failure rate to test the system's resilience and refund logic.
 
 -   **`createGenerationRequest` (HTTPS Function)**:
     -   **Atomicity**: Uses a Firestore Transaction (`@firestore.transactional`) to perform the credit deduction and creation of the generation request record as a single, atomic operation. This guarantees that a user's credits are never deducted without a corresponding request record being created.
@@ -152,7 +160,7 @@ The entire system is designed to be run locally using the Firebase Emulator Suit
     GCLOUD_PROJECT="demo-case-study" \
     GOOGLE_CLOUD_PROJECT="demo-case-study" \
     FIREBASE_AUTH_EMULATOR_HOST="127.0.0.1:9099" \
-    python3 -m functions_framework --target=main --source=functions_wrapper.py --port=5001
+    python3 -m functions_framework --target=main --source=main.py --port=5001
     
     # Terminal 2: Start Firebase Emulators
     firebase emulators:start --only auth,firestore,database --import=./initial_data --project=demo-case-study

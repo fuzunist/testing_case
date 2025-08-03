@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 import pytest
-from functions.main import scheduleWeeklyReport
+from functions.handlers import scheduleWeeklyReport
 
 logger = logging.getLogger(__name__)
 

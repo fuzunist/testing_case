@@ -199,7 +199,7 @@ def app_client():
     
     # Import the functions
     logger.info("Importing Firebase Functions for Flask app")
-    from functions.main import createGenerationRequest, getUserCredits
+    from functions.handlers import createGenerationRequest, getUserCredits
     
     logger.info("Creating Flask test app")
     app = Flask(__name__)

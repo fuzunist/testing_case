@@ -1,7 +1,7 @@
 import logging
 import pytest
 from unittest.mock import patch
-from functions.main import createGenerationRequest
+from functions.handlers import createGenerationRequest
 
 # Configure logging for this test module
 logger = logging.getLogger(__name__)
