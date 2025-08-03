@@ -82,9 +82,15 @@ def test_invalid_enum_values(app_client):
         if "model" in payload and payload["model"] == "Invalid Model":
             assert "Invalid model" in response_text
             logger.info(f"Payload {i} validation passed - correctly rejected invalid model")
-        else:
-            assert "Invalid style, color, or size" in response_text
-            logger.info(f"Payload {i} validation passed - correctly rejected invalid enum value")
+        elif "style" in payload and payload["style"] == "Invalid Style":
+            assert "Invalid style" in response_text
+            logger.info(f"Payload {i} validation passed - correctly rejected invalid style")
+        elif "color" in payload and payload["color"] == "Invalid Color":
+            assert "Invalid color" in response_text
+            logger.info(f"Payload {i} validation passed - correctly rejected invalid color")
+        elif "size" in payload and payload["size"] == "Invalid Size":
+            assert "Invalid size" in response_text
+            logger.info(f"Payload {i} validation passed - correctly rejected invalid size")
     
     logger.info("=== test_invalid_enum_values completed successfully ===")
 

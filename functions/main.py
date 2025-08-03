@@ -489,7 +489,7 @@ def scheduleWeeklyReport(event: ScheduledEvent) -> dict:
     with the previous week's report, and saves it to a 'reports' collection.
     """
     logger.info(f"=== Starting weekly report generation ===")
-    logger.info(f"Event details - Job name: {event.job_name}, Schedule: {event.schedule}")
+    logger.info(f"Event details - Job name: {getattr(event, 'job_name', 'unknown')}")
 
     try:
         # 1. Define the time range for the last week
