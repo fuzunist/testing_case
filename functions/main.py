@@ -95,16 +95,42 @@ def get_config_data():
     try:
         logger.info("Loading initial data from Firestore collections...")
         db = get_db()
-        styles = {doc.id for doc in db.collection("styles").stream()}
-        colors = {doc.id for doc in db.collection("colors").stream()}
-        sizes = {doc.id: doc.to_dict()["credits"] for doc in db.collection("sizes").stream()}
+        
+        # Load styles
+        logger.info("Loading styles collection...")
+        styles = set()
+        style_docs = db.collection("styles").stream()
+        for doc in style_docs:
+            styles.add(doc.id)
+            logger.debug(f"Loaded style: {doc.id}")
+        
+        # Load colors
+        logger.info("Loading colors collection...")
+        colors = set()
+        color_docs = db.collection("colors").stream()
+        for doc in color_docs:
+            colors.add(doc.id)
+            logger.debug(f"Loaded color: {doc.id}")
+        
+        # Load sizes
+        logger.info("Loading sizes collection...")
+        sizes = {}
+        size_docs = db.collection("sizes").stream()
+        for doc in size_docs:
+            doc_data = doc.to_dict()
+            if doc_data and "credits" in doc_data:
+                sizes[doc.id] = doc_data["credits"]
+                logger.debug(f"Loaded size: {doc.id} with {doc_data['credits']} credits")
+        
         logger.info(f"Successfully loaded initial data - Styles: {len(styles)}, Colors: {len(colors)}, Sizes: {len(sizes)}")
-        logger.debug(f"Available styles: {styles}")
-        logger.debug(f"Available colors: {colors}")
-        logger.debug(f"Available sizes and costs: {sizes}")
+        logger.info(f"Available styles: {styles}")
+        logger.info(f"Available colors: {colors}")
+        logger.info(f"Available sizes and costs: {sizes}")
         return styles, colors, sizes
     except Exception as e:
         logger.critical(f"Could not load initial data from Firestore: {e}", exc_info=True)
+        logger.critical(f"Error type: {type(e).__name__}")
+        logger.critical(f"Error details: {str(e)}")
         return set(), set(), {}
 
 # Global variables - initialized when first accessed
@@ -198,7 +224,7 @@ def createGenerationRequest(req: https_fn.Request) -> https_fn.Response:
 
         # Run the transaction by passing the transaction function and its arguments
         logger.info("Starting atomic transaction for credit deduction and generation...")
-        image_url = _atomic_deduct_and_generate(
+        generation_id, user_id_result, credit_cost_result, data_result = _atomic_deduct_and_generate(
             transaction=db.transaction(),
             user_ref=user_ref,
             credit_cost=credit_cost,
@@ -206,20 +232,52 @@ def createGenerationRequest(req: https_fn.Request) -> https_fn.Response:
             data=data,
         )
 
-        logger.info(f"Transaction completed successfully. Image URL: {image_url}")
+        logger.info(f"Transaction completed successfully. Generation ID: {generation_id}")
+        
+        # Now trigger AI simulation outside of transaction
+        logger.info(f"Starting AI simulation for model: {data_result['model']}")
+        model_enum = next((m for m in ImageModels if m.value == data_result["model"]), None)
+        ai_model = AIChat(model=model_enum)
+        generation_result = ai_model.create()
+        logger.info(f"AI simulation result: {generation_result}")
 
-        # 4. Return Success Response
-        response_data = {
-            "generationRequestId": generation_ref.id,
-            "deductedCredits": credit_cost,
-            "imageUrl": image_url,
-        }
-        logger.info(f"Returning success response: {response_data}")
-        return https_fn.Response(
-            json.dumps(response_data),
-            status=200,
-            mimetype="application/json"
-        )
+        # Handle generation result
+        if generation_result["success"]:
+            # Update request on success
+            logger.info(f"AI generation successful, updating request status to 'completed'")
+            update_data = {
+                "status": "completed",
+                "imageUrl": generation_result["imageUrl"],
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            }
+            logger.info(f"Updating generation request with: {update_data}")
+            db.collection("generationRequests").document(generation_id).update(update_data)
+            
+            # 4. Return Success Response
+            response_data = {
+                "generationRequestId": generation_id,
+                "deductedCredits": credit_cost_result,
+                "imageUrl": generation_result["imageUrl"],
+            }
+            logger.info(f"Returning success response: {response_data}")
+            return https_fn.Response(
+                json.dumps(response_data),
+                status=200,
+                mimetype="application/json"
+            )
+        else:
+            # Refund credits on failure
+            logger.warning(f"AI generation failed, initiating credit refund for user '{user_id_result}'")
+            _refund_credits(user_id_result, generation_id, credit_cost_result)
+            
+            update_data = {"status": "failed", "updatedAt": firestore.SERVER_TIMESTAMP}
+            logger.info(f"Updating generation request status to 'failed': {update_data}")
+            db.collection("generationRequests").document(generation_id).update(update_data)
+            
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.INTERNAL,
+                message="AI generation failed, credits refunded.",
+            )
 
     except https_fn.HttpsError as e:
         # Handle specific, known errors (e.g., insufficient funds)
@@ -284,41 +342,9 @@ def _atomic_deduct_and_generate(transaction, user_ref, credit_cost, generation_r
     transaction.set(trans_ref, transaction_log)
 
     logger.info("Atomic transaction completed successfully")
-
-    # --- This part is outside the atomic read/write but part of the function flow ---
     
-    # 5. Trigger AI simulation
-    logger.info(f"Starting AI simulation for model: {data['model']}")
-    model_enum = next((m for m in ImageModels if m.value == data["model"]), None)
-    ai_model = AIChat(model=model_enum)
-    generation_result = ai_model.create()
-    logger.info(f"AI simulation result: {generation_result}")
-
-    # 6. Handle generation result
-    if generation_result["success"]:
-        # Update request on success
-        logger.info(f"AI generation successful, updating request status to 'completed'")
-        update_data = {
-            "status": "completed",
-            "imageUrl": generation_result["imageUrl"],
-            "updatedAt": firestore.SERVER_TIMESTAMP,
-        }
-        logger.info(f"Updating generation request with: {update_data}")
-        get_db().collection("generationRequests").document(generation_ref.id).update(update_data)
-        return generation_result["imageUrl"]
-    else:
-        # Refund credits on failure
-        logger.warning(f"AI generation failed, initiating credit refund for user '{user_ref.id}'")
-        _refund_credits(user_ref.id, generation_ref.id, credit_cost)
-        
-        update_data = {"status": "failed", "updatedAt": firestore.SERVER_TIMESTAMP}
-        logger.info(f"Updating generation request status to 'failed': {update_data}")
-        get_db().collection("generationRequests").document(generation_ref.id).update(update_data)
-        
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.INTERNAL,
-            message="AI generation failed, credits refunded.",
-        )
+    # Transaction is now complete, generation_ref document exists in Firestore
+    return generation_ref.id, user_ref.id, credit_cost, data
 
 
 def _refund_credits(user_id, generation_id, amount):
@@ -668,6 +694,7 @@ def main(req: https_fn.Request) -> https_fn.Response:
                     def __init__(self):
                         self.job_name = "manual-trigger"
                         self.schedule = "manual"
+                        self.headers = {}  # Add headers attribute
                 
                 result = scheduleWeeklyReport(DummyEvent())
                 return https_fn.Response(json.dumps(result, default=str), status=200, mimetype="application/json")
