@@ -282,7 +282,19 @@ def createGenerationRequest(req: https_fn.Request) -> https_fn.Response:
     except https_fn.HttpsError as e:
         # Handle specific, known errors (e.g., insufficient funds)
         logger.warning(f"Handled HttpsError for user '{user_id}': {e.message} (code: {e.code})")
-        return https_fn.Response(e.message, status=e.code)
+        logger.info(f"HttpsError details - message: '{e.message}', code: {e.code}, code type: {type(e.code)}")
+        
+        # Map Firebase error codes to HTTP status codes
+        status_code = 500  # Default
+        if e.code == https_fn.FunctionsErrorCode.FAILED_PRECONDITION:
+            status_code = 400  # Bad Request for insufficient credits
+        elif e.code == https_fn.FunctionsErrorCode.NOT_FOUND:
+            status_code = 404
+        elif e.code == https_fn.FunctionsErrorCode.INTERNAL:
+            status_code = 500
+            
+        logger.info(f"Returning HTTP status code: {status_code}")
+        return https_fn.Response(e.message, status=status_code)
     except Exception as e:
         # Handle other potential, unexpected errors
         logger.error(f"Unexpected error in createGenerationRequest for user '{user_id}': {e}", exc_info=True)
@@ -310,6 +322,8 @@ def _atomic_deduct_and_generate(transaction, user_ref, credit_cost, generation_r
     
     if current_credits < credit_cost:
         logger.warning(f"Insufficient credits for user '{user_ref.id}'. Current: {current_credits}, Required: {credit_cost}")
+        logger.info(f"Credit check failed: {current_credits} < {credit_cost} = {current_credits < credit_cost}")
+        logger.info(f"About to raise HttpsError with code FAILED_PRECONDITION")
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
             message="Insufficient credits.",

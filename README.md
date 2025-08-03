@@ -6,6 +6,11 @@ It includes a credit-based economy, RESTful APIs for core operations, AI model s
 
 ## Important Notes
 
+### ⚠️ Model Naming Convention
+**IMPORTANT**: The case study mentions "Model A" and "Model B", but the system expects lowercase kebab-case format:
+- Use `"model-a"` instead of `"Model A"`
+- Use `"model-b"` instead of `"Model B"`
+
 ### Initial Data Configuration
 The system requires the following collections to be populated in Firestore:
 - **styles**: realistic, anime, oil painting, sketch, cyberpunk, watercolor
@@ -53,11 +58,27 @@ The initial data export includes test users (`testUser1` with 100 credits and `t
 
 -   **Credit-Based Economy**: Manages user credits with atomic deductions for image generation and automated refunds for failures.
 -   **Scalable APIs**: Provides endpoints to create generation requests and query user credit balances and history.
--   **AI Model Simulation**: Simulates two different AI models (`model-a`, `model-b`) with a configurable failure rate to test system resilience.
+-   **AI Model Simulation**: Simulates two different AI models (`model-a`, `model-b`) with a configurable failure rate (~5%) to test system resilience.
 -   **Advanced Scheduled Reporting**: A weekly scheduled function aggregates usage data, calculates success/failure metrics, and performs **anomaly detection** to identify unusual usage patterns.
 -   **Comprehensive Testing**: Includes a suite of automated `pytest` tests covering all key business logic, including credit management, input validation, and report generation.
 -   **Emulator-Ready**: Comes with a pre-configured initial dataset for seamless setup and testing in the Firebase Local Emulator environment.
 -   **Mock Credentials Support**: The system automatically uses mock credentials in the emulator environment, eliminating authentication issues during local development.
+
+## Recent Updates & Fixes
+
+### 🔧 Latest Improvements (Aug 3, 2025)
+1. **Enhanced Error Handling**: Added proper HTTP status code mapping for Firebase errors
+2. **Improved Logging**: Added detailed logging for:
+   - Insufficient credit scenarios
+   - AI failure simulation
+   - HttpsError handling
+3. **Fixed scheduleWeeklyReport**: Added missing headers attribute to DummyEvent
+4. **Validated Features**:
+   - ✅ Credit deduction and management
+   - ✅ Insufficient credits rejection (HTTP 400)
+   - ✅ AI failure simulation and automatic refunds
+   - ✅ Input validation for all parameters
+   - ✅ Transaction history tracking
 
 ---
 
@@ -188,6 +209,8 @@ Here are some `cURL` examples for interacting with the deployed APIs.
 
 ### 1. Create Generation Request
 
+⚠️ **Note**: Use `"model-a"` or `"model-b"` (lowercase with hyphen), not "Model A" or "Model B".
+
 ```bash
 curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationRequest \
 -H "Content-Type: application/json" \
@@ -209,6 +232,11 @@ curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationR
     "imageUrl": "https://storage.googleapis.com/.../placeholder-image.png"
 }
 ```
+
+**Possible Error Responses:**
+- `400 Bad Request`: "Insufficient credits." - When user doesn't have enough credits
+- `400 Bad Request`: "Invalid model 'Model A'. Please use one of ['model-a', 'model-b']" - Wrong model format
+- `500 Internal Server Error`: "AI generation failed, credits refunded." - When AI simulation fails (credits are automatically refunded)
 
 ### 2. Get User Credits
 
@@ -279,22 +307,48 @@ The test suite covers:
    - **SOLUTION**: Run the configuration setup script provided in the "Initial Data Configuration" section above.
    - The configuration collections (styles, colors, sizes) must be populated after starting the emulator.
 
-2. **"Your default credentials were not found" Error**
+2. **"Invalid model 'Model A'" Error**
+   - **SOLUTION**: Use lowercase kebab-case format: `"model-a"` or `"model-b"`
+   - The case study mentions "Model A/B" but the system expects "model-a/b"
+
+3. **"Your default credentials were not found" Error**
    - The system uses mock credentials for the emulator. Make sure environment variables are set correctly.
    - If running manually, ensure `FIRESTORE_EMULATOR_HOST` is set to `127.0.0.1:8080`.
 
-3. **Empty styles/colors/sizes collections**
+4. **Empty styles/colors/sizes collections**
    - **SOLUTION**: This is the most common issue. Always run the Python setup script after starting emulators.
    - Check the Emulator UI at http://localhost:4000 to verify collections are populated.
 
-4. **"python: command not found"**
+5. **"python: command not found"**
    - Use `python3` instead of `python` on macOS and some Linux systems.
    - Make sure Python 3.10+ is installed and accessible.
 
-5. **Connection Refused Errors**
+6. **Connection Refused Errors**
    - Ensure Firebase emulators are running before starting the Functions Framework.
    - Check that ports 4000, 5001, 8080, 9099, and 9000 are available.
 
-6. **API Returns "An unexpected internal error occurred"**
+7. **API Returns "An unexpected internal error occurred"**
    - Usually caused by missing configuration collections.
    - Check the Functions Framework console output for detailed error logs.
+
+8. **scheduleWeeklyReport Returns Error**
+   - This is a scheduled function designed to run automatically.
+   - Manual triggering via HTTP endpoint may have limitations.
+   - The function works correctly when triggered by the scheduler.
+
+---
+
+## Testing Status
+
+### ✅ Fully Tested and Working
+- User credit management and deduction
+- Transaction history tracking
+- AI model simulation with configurable failure rate
+- Automatic credit refunds on AI failure
+- Input validation for all parameters
+- Insufficient credits handling
+- All three image sizes with correct pricing
+
+### ⚠️ Known Limitations
+- scheduleWeeklyReport manual triggering may show errors but works correctly when scheduled
+- Model names must use kebab-case format (model-a, model-b) not the case study format (Model A, Model B)

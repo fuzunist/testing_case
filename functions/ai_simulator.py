@@ -71,11 +71,12 @@ class AIChat:
         
         # Generate random number for failure simulation
         random_value = random.random()
-        logger.debug(f"Random value generated: {random_value}")
+        logger.info(f"Random value generated: {random_value}")
+        logger.info(f"Comparison: {random_value} < {self.failure_rate} = {random_value < self.failure_rate}")
         
         if random_value < self.failure_rate:
             logger.warning(f"AI generation failed for model {self.model.value}")
-            logger.debug(f"Random value {random_value} < failure rate {self.failure_rate}")
+            logger.info(f"Random value {random_value} < failure rate {self.failure_rate}")
             
             error_result = {
                 "success": False,
@@ -85,7 +86,7 @@ class AIChat:
             return error_result
         
         logger.info(f"AI generation successful for model {self.model.value}")
-        logger.debug(f"Random value {random_value} >= failure rate {self.failure_rate}")
+        logger.info(f"Random value {random_value} >= failure rate {self.failure_rate}")
         
         # Get image URL using the enum as key
         try:

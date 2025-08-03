@@ -137,6 +137,7 @@ def handle_request(request: Request) -> Response:
                         def __init__(self):
                             self.job_name = "manual-trigger"
                             self.schedule = "manual"
+                            self.headers = {}  # Add headers attribute
                     
                     result = firebase_functions.scheduleWeeklyReport(DummyEvent())
                     return make_response(json.dumps(result, default=str), 200)
