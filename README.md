@@ -2,7 +2,7 @@
 
 This repository contains a scalable and robust backend system for an AI image generation service, built as a solution for the Software Engineer case study. The system is implemented entirely in Python using Firebase (Cloud Functions & Firestore) and is designed with best practices for maintainability, testability, and operational excellence.
 
-## Key Features
+Key Features
 
 -   **✅ Atomic Credit Management**: Guarantees financial consistency by handling credit deductions and refunds within atomic Firestore transactions. Users are never charged for failed generations.
 -   **🚀 Scalable API & DB Design**: A clean API design coupled with a scalable Firestore schema (e.g., user-specific subcollections for transactions) ensures performance remains high as the user base grows.
@@ -14,15 +14,15 @@ This repository contains a scalable and robust backend system for an AI image ge
 
 ---
 
-## Quick Start
+Quick Start
 
-### Prerequisites
+Prerequisites
 
 -   [Firebase CLI](https://firebase.google.com/docs/cli#install)
 -   [Python 3.10+](https://www.python.org/downloads/)
 -   A Java Development Kit (JDK) is required by the Firebase Emulators.
 
-### 1. Installation
+1. Installation
 
 Clone the repository to your local machine:
 ```bash
@@ -30,7 +30,7 @@ git clone https://github.com/fuzunist/testing_case.git
 cd testing_case
 ```
 
-### 2. Running the System
+2. Running the System
 
 To start the complete local environment (Firebase Emulators and Python Functions), run the automated startup script. This single command handles everything, including importing all necessary data.
 
@@ -41,7 +41,7 @@ The services will be available at:
 -   **Emulator UI**: [http://localhost:4000](http://localhost:4000)
 -   **Functions API**: `http://127.0.0.1:5001`
 
-### 3. Running the Automated Tests
+3. Running the Automated Tests
 
 To verify the entire system's functionality, run the automated test script. This will start the emulators, run all 9 `pytest` tests, report the result, and automatically shut down all services.
 
@@ -52,11 +52,11 @@ You should see a "✅ **SUCCESS: All tests passed!**" message upon completion.
 
 ---
 
-## API Usage (`cURL` Examples)
+API Usage (`cURL` Examples)
 
 *(The initial data includes two test users: `testUser1` (100 credits) and `testUser2` (10 credits))*
 
-### 1. Create Generation Request
+1. Create Generation Request
 
 **Note**: Use `"model-a"` or `"model-b"` (lowercase), not "Model A".
 
@@ -81,7 +81,7 @@ curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationR
 }
 ```
 
-### 2. Get User Credits & History
+2. Get User Credits & History
 
 ```bash
 curl -X GET "http://127.0.0.1:5001/demo-case-study/us-central1/getUserCredits?userId=testUser1"
@@ -104,11 +104,11 @@ curl -X GET "http://127.0.0.1:5001/demo-case-study/us-central1/getUserCredits?us
 
 ---
 
-## Architecture and Design Decisions
+Architecture and Design Decisions
 
 This section highlights the key technical decisions made to ensure the system is robust, scalable, and maintainable.
 
-### 1. File Structure
+1. File Structure
 
 The `functions` directory is structured for clarity and separation of concerns:
 -   **`main.py` (Entry Point)**: The entry point for the Functions Framework. It receives all HTTP requests and routes them to the appropriate handler.
@@ -116,7 +116,7 @@ The `functions` directory is structured for clarity and separation of concerns:
 -   **`config.py`**: Centralizes all application configuration.
 -   **`ai_simulator.py`**: A module to simulate AI model behavior, including failures.
 
-### 2. Database Schema (Firestore)
+2. Database Schema (Firestore)
 
 -   **`users`**: Stores user data, including their current `credits`.
 -   **`transactions` (Subcollection)**: By storing transactions in a subcollection (`/users/{userId}/transactions/{txId}`), we ensure that queries for a user's history remain fast and efficient, regardless of the total number of users or transactions in the system.
@@ -124,7 +124,7 @@ The `functions` directory is structured for clarity and separation of concerns:
 -   **`reports`**: Stores the output of the weekly reporting function.
 -   **Configuration Collections (`styles`, `colors`, `sizes`)**: Storing these as collections makes the system extensible. New options can be added directly to the database without any code changes.
 
-### 3. Core Logic Highlights
+3. Core Logic Highlights
 
 -   **Atomicity**: The critical financial operation—deducting credits and creating a request—is performed in a single, atomic Firestore transaction. This guarantees data consistency.
 -   **Anomaly Detection**: The weekly report doesn't just aggregate data; it compares the current week's metrics against the *previous week's report* to detect anomalies like a sudden drop in success rate or a spike in usage, which is crucial for operational monitoring.
@@ -132,7 +132,7 @@ The `functions` directory is structured for clarity and separation of concerns:
 
 ---
 
-## Case Study Requirements Checklist
+Case Study Requirements Checklist
 
 | Requirement                               | Implemented? | Notes                                                                                                                             |
 | ----------------------------------------- | :----------: | --------------------------------------------------------------------------------------------------------------------------------- |
