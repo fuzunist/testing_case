@@ -62,31 +62,33 @@ def test_weekly_report_integration(db):
         
         # In this setup, scheduleWeeklyReport is imported directly and returns a dict.
         # The issue might be how the test environment is set up. Let's assume direct call.
-        report_response_dict = scheduleWeeklyReport(MockEvent())
-
+        scheduleWeeklyReport(MockEvent())
+    
         # --- Assertions ---
-        assert report_response_dict is not None, "Report function returned None."
-        logger.info(f"Report response received with {len(report_response_dict.get('anomalies', []))} anomalies.")
-
-        # 1. Verify key metrics in the returned report data
-        assert report_response_dict.get("totalRequests") == 3
-        assert report_response_dict.get("totalCreditsSpent") == 7  # 3 (user1) + 4 (user3)
-        assert report_response_dict.get("totalCreditsRefunded") == 1 # 1 (user2)
-        assert pytest.approx(report_response_dict.get("successRate", 0), 0.01) == (2/3) * 100
-
-        # 2. Verify anomaly detection ran
-        assert "anomalies" in report_response_dict
-        assert isinstance(report_response_dict["anomalies"], list)
-
-        # 3. Verify the report was saved correctly in Firestore
+        # Instead of checking the return value (which is not standard for scheduled functions),
+        # we will verify the outcome directly from Firestore.
         report_id = f"report_{now.strftime('%Y-%m-%d')}"
         report_ref = db.collection("reports").document(report_id)
-        report_snapshot = report_ref.get()
+        created_docs.append(("reports", report_id)) # Add to cleanup
         
-        assert report_snapshot.exists, f"Report document '{report_id}' was not found in Firestore."
-        saved_data = report_snapshot.to_dict()
-        assert saved_data.get("totalRequests") == 3
-        created_docs.append(("reports", report_id)) # Ensure cleanup
+        report_doc = report_ref.get()
+        assert report_doc.exists, f"Report document '{report_id}' was not created in Firestore."
+
+        report_data = report_doc.to_dict()
+        logger.info(f"Successfully fetched created report from Firestore: {report_data}")
+
+        # 1. Verify key metrics in the generated report data
+        assert report_data["totalRequests"] == 3
+        assert report_data["totalCreditsSpent"] == 7
+        assert report_data.get("totalCreditsRefunded") == 1 # 1 (user2)
+        assert pytest.approx(report_data.get("successRate", 0), 0.01) == (2/3) * 100
+
+        # 2. Verify anomaly detection ran
+        assert "anomalies" in report_data
+        assert isinstance(report_data["anomalies"], list)
+
+        # 3. Verify the report was saved correctly in Firestore
+        # The report_id was already added to created_docs for cleanup
         logger.info(f"Verified report was saved to Firestore: {report_id}")
 
         logger.info("All assertions for weekly report test passed successfully.")
