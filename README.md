@@ -4,6 +4,16 @@ This repository contains the solution for the **AI Image Generation Backend Syst
 
 It includes a credit-based economy, RESTful APIs for core operations, AI model simulation with failure handling, and a sophisticated weekly reporting mechanism with anomaly detection.
 
+## Important Notes
+
+### Initial Data Configuration
+The system requires the following collections to be populated in Firestore:
+- **styles**: realistic, anime, oil painting, sketch, cyberpunk, watercolor
+- **colors**: vibrant, monochrome, pastel, neon, vintage  
+- **sizes**: 512x512 (1 credit), 1024x1024 (3 credits), 1024x1792 (4 credits)
+
+The initial data export includes test users (`testUser1` and `testUser2`) but may need the configuration collections to be added manually if not present.
+
 ## Key Features
 
 -   **Credit-Based Economy**: Manages user credits with atomic deductions for image generation and automated refunds for failures.
@@ -12,12 +22,18 @@ It includes a credit-based economy, RESTful APIs for core operations, AI model s
 -   **Advanced Scheduled Reporting**: A weekly scheduled function aggregates usage data, calculates success/failure metrics, and performs **anomaly detection** to identify unusual usage patterns.
 -   **Comprehensive Testing**: Includes a suite of automated `pytest` tests covering all key business logic, including credit management, input validation, and report generation.
 -   **Emulator-Ready**: Comes with a pre-configured initial dataset for seamless setup and testing in the Firebase Local Emulator environment.
+-   **Mock Credentials Support**: The system automatically uses mock credentials in the emulator environment, eliminating authentication issues during local development.
 
 ---
 
 ## Architecture and Design Decisions
 
 This section outlines the key architectural choices made during the development of the system.
+
+### Key Technical Updates
+
+-   **Mock Credentials for Emulator**: The system automatically uses mock credentials when running in the Firebase Emulator environment, eliminating the need for actual Google Cloud credentials during local development.
+-   **Python 3 Compatibility**: All commands use `python3` explicitly to ensure compatibility across different systems.
 
 ### 1. Database Schema (Firestore)
 
@@ -55,15 +71,15 @@ All business logic is encapsulated within Firebase Functions written in Python.
 ### Prerequisites
 
 -   [Firebase CLI](https://firebase.google.com/docs/cli#install)
--   [Python 3.10+](https://www.python.org/downloads/)
+-   [Python 3.10+](https://www.python.org/downloads/) - Make sure `python3` command is available
 -   A Java Development Kit (JDK) is required by the Firebase Emulators.
 
 ### Setup and Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://your-repository-link.git
-    cd your-repository-directory
+    git clone https://github.com/fuzunist/testing_case.git
+    cd testing_case
     ```
 
 2.  **Set up the Python Virtual Environment:**
@@ -109,11 +125,13 @@ The entire system is designed to be run locally using the Firebase Emulator Suit
     GCLOUD_PROJECT="demo-case-study" \
     GOOGLE_CLOUD_PROJECT="demo-case-study" \
     FIREBASE_AUTH_EMULATOR_HOST="127.0.0.1:9099" \
-    python -m functions_framework --target=main --source=functions_wrapper.py --port=5001
+    python3 -m functions_framework --target=main --source=functions_wrapper.py --port=5001
     
     # Terminal 2: Start Firebase Emulators
     firebase emulators:start --only auth,firestore,database --import=./initial_data --project=demo-case-study
     ```
+    
+    **Note:** The system uses mock credentials for the emulator environment, so no actual Google Cloud credentials are needed.
 
 3.  **Emulator UI:**
     Once running, you can access the powerful Emulator UI at [http://localhost:4000](http://localhost:4000). Here you can:
@@ -127,7 +145,7 @@ The entire system is designed to be run locally using the Firebase Emulator Suit
 
 Here are some `cURL` examples for interacting with the deployed APIs.
 
-*(Note: The port for the functions emulator may vary. Check the output of the `firebase emulators:start` command.)*
+*(Note: The initial data includes two test users: `testUser1` (100 credits) and `testUser2` (10 credits))*
 
 ### 1. Create Generation Request
 
@@ -135,7 +153,7 @@ Here are some `cURL` examples for interacting with the deployed APIs.
 curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationRequest \
 -H "Content-Type: application/json" \
 -d '{
-    "userId": "test-user-1",
+    "userId": "testUser1",
     "model": "model-a",
     "style": "anime",
     "color": "vibrant",
@@ -144,10 +162,12 @@ curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationR
 }'
 ```
 
+**Note:** Make sure the configuration collections (styles, colors, sizes) are populated in Firestore before making generation requests.
+
 ### 2. Get User Credits
 
 ```bash
-curl -X GET "http://127.0.0.1:5001/demo-case-study/us-central1/getUserCredits?userId=test-user-1"
+curl -X GET "http://127.0.0.1:5001/demo-case-study/us-central1/getUserCredits?userId=testUser1"
 ```
 
 ### 3. Trigger Weekly Report Manually (for testing)
@@ -166,10 +186,11 @@ The project includes a comprehensive test suite using `pytest`. The tests run ag
 1.  **Ensure the emulators are running** (see steps above).
 
 2.  **Run the tests:**
-    Make sure your virtual environment is activated (`source functions/venv/bin/activate`) and run the following command from the project root:
+    Make sure your virtual environment is activated and run the following command from the project root:
 
     ```bash
-    pytest
+    cd functions && source venv/bin/activate && cd ..
+    FIRESTORE_EMULATOR_HOST="127.0.0.1:8080" pytest
     ```
 
     The test suite covers:
@@ -179,3 +200,27 @@ The project includes a comprehensive test suite using `pytest`. The tests run ag
     -   `test_insufficient_funds.py`: Rejection of requests from users with insufficient credits.
     -   `test_get_user_credits.py`: Correct retrieval of user balance and transaction history.
     -   `test_weekly_report.py`: Successful generation and data aggregation of the weekly report.
+    
+    **Note:** Some tests may require adjustments to work with the mock credentials system and current initial data structure.
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"Your default credentials were not found" Error**
+   - The system uses mock credentials for the emulator. Make sure environment variables are set correctly.
+   - If running manually, ensure `FIRESTORE_EMULATOR_HOST` is set to `127.0.0.1:8080`.
+
+2. **"Invalid style/color/size" Errors**
+   - The configuration collections (styles, colors, sizes) need to be populated in Firestore.
+   - These should be imported with initial data, but can be added manually if missing.
+
+3. **"python: command not found"**
+   - Use `python3` instead of `python` on macOS and some Linux systems.
+   - Make sure Python 3.10+ is installed and accessible.
+
+4. **Connection Refused Errors**
+   - Ensure Firebase emulators are running before starting the Functions Framework.
+   - Check that ports 4000, 5001, 8080, 9099, and 9000 are available.

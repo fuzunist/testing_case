@@ -23,16 +23,35 @@ options.set_global_options(max_instances=10)
 
 # Initialize Firebase Admin SDK
 import os
+
+# Force emulator environment variables
+os.environ['FIRESTORE_EMULATOR_HOST'] = os.getenv('FIRESTORE_EMULATOR_HOST', '127.0.0.1:8080')
+os.environ['FIREBASE_AUTH_EMULATOR_HOST'] = os.getenv('FIREBASE_AUTH_EMULATOR_HOST', '127.0.0.1:9099')
+
 if not firebase_admin._apps:
+    logger.info("Checking Firebase Admin SDK initialization environment")
+    logger.info(f"FIRESTORE_EMULATOR_HOST: {os.getenv('FIRESTORE_EMULATOR_HOST')}")
+    logger.info(f"GCLOUD_PROJECT: {os.getenv('GCLOUD_PROJECT')}")
+    logger.info(f"GOOGLE_CLOUD_PROJECT: {os.getenv('GOOGLE_CLOUD_PROJECT')}")
+    
     try:
         # Check if running in emulator environment
-        if (os.getenv('FIRESTORE_EMULATOR_HOST') or 
-            os.getenv('GCLOUD_PROJECT') == 'demo-case-study' or
-            os.getenv('GOOGLE_CLOUD_PROJECT') == 'demo-case-study'):
+        if os.getenv('FIRESTORE_EMULATOR_HOST'):
             logger.info("Initializing Firebase Admin SDK for emulator environment")
-            # For emulator, initialize without credentials
-            firebase_admin.initialize_app(options={'projectId': 'demo-case-study'})
-            logger.info("Firebase Admin SDK initialized for emulator")
+            
+            # Create a mock credential for emulator
+            class MockCredential(credentials.Base):
+                def get_credential(self):
+                    # Return a mock credential that satisfies the SDK
+                    from google.oauth2 import credentials as oauth2_credentials
+                    return oauth2_credentials.Credentials(token='mock-token')
+            
+            cred = MockCredential()
+            firebase_admin.initialize_app(
+                credential=cred,
+                options={'projectId': 'demo-case-study'}
+            )
+            logger.info("Firebase Admin SDK initialized for emulator with mock credentials")
         else:
             logger.info("Initializing Firebase Admin SDK with default credentials")
             cred = credentials.ApplicationDefault()
@@ -40,17 +59,32 @@ if not firebase_admin._apps:
             logger.info("Firebase Admin SDK initialized successfully")
     except Exception as e:
         logger.warning(f"Failed to initialize with credentials, trying emulator mode: {e}")
-        # Fallback to emulator mode if credentials fail
-        firebase_admin.initialize_app(options={'projectId': 'demo-case-study'})
-        logger.info("Firebase Admin SDK initialized in fallback emulator mode")
+        # Fallback to emulator mode with mock credentials
+        class MockCredential(credentials.Base):
+            def get_credential(self):
+                from google.oauth2 import credentials as oauth2_credentials
+                return oauth2_credentials.Credentials(token='mock-token')
+        
+        cred = MockCredential()
+        firebase_admin.initialize_app(
+            credential=cred,
+            options={'projectId': 'demo-case-study'}
+        )
+        logger.info("Firebase Admin SDK initialized in fallback emulator mode with mock credentials")
+
+# Initialize db as None
+db = None
 
 def get_db():
     """Get or create Firestore client"""
     global db
-    if 'db' not in globals():
+    if 'db' not in globals() or db is None:
         try:
+            # Make sure we're using the emulator
+            if os.getenv('FIRESTORE_EMULATOR_HOST'):
+                logger.info(f"Connecting to Firestore emulator at {os.getenv('FIRESTORE_EMULATOR_HOST')}")
             db = firestore.client()
-            logger.info("Firestore client initialized")
+            logger.info("Firestore client initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Firestore client: {e}")
             raise

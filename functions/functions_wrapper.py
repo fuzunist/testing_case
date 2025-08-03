@@ -9,15 +9,36 @@ import logging
 from typing import Any, Dict
 from flask import Request, Response, make_response
 
-# Import the actual functions from main
-import main
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+logger.info("Starting to import main module...")
+
+# Import the actual functions from main
+import main as firebase_functions
+
+logger.info(f"Main module imported successfully. Type: {type(firebase_functions)}")
+logger.info(f"Main module attributes: {dir(firebase_functions)}")
+
+# Check what we have in main module
+if hasattr(firebase_functions, 'createGenerationRequest'):
+    logger.info(f"createGenerationRequest found. Type: {type(firebase_functions.createGenerationRequest)}")
+else:
+    logger.error("createGenerationRequest NOT found in main module!")
+
+if hasattr(firebase_functions, 'getUserCredits'):
+    logger.info(f"getUserCredits found. Type: {type(firebase_functions.getUserCredits)}")
+else:
+    logger.error("getUserCredits NOT found in main module!")
+
+if hasattr(firebase_functions, 'scheduleWeeklyReport'):
+    logger.info(f"scheduleWeeklyReport found. Type: {type(firebase_functions.scheduleWeeklyReport)}")
+else:
+    logger.error("scheduleWeeklyReport NOT found in main module!")
 
 class FirebaseFunctionsAdapter:
     """Adapter to make Flask Request compatible with Firebase Functions"""
@@ -64,6 +85,7 @@ def handle_request(request: Request) -> Response:
     """Main entry point for Functions Framework"""
     try:
         logger.info(f"Request received: {request.method} {request.path}")
+        logger.info(f"Main module type in handle_request: {type(firebase_functions)}")
         
         # Handle root path
         if request.path == "/" or request.path == "":
@@ -83,19 +105,30 @@ def handle_request(request: Request) -> Response:
         if len(path_parts) >= 3:
             function_name = path_parts[2]
             logger.info(f"Routing to function: {function_name}")
+            logger.info(f"Checking if firebase_functions has attribute {function_name}: {hasattr(firebase_functions, function_name)}")
             
             # Create adapted request
             adapted_request = FirebaseFunctionsAdapter(request)
             
             try:
                 if function_name == "createGenerationRequest":
-                    # Call the wrapped function directly
-                    response = main.createGenerationRequest._function(adapted_request)
+                    logger.info(f"Attempting to call firebase_functions.createGenerationRequest...")
+                    logger.info(f"firebase_functions type: {type(firebase_functions)}")
+                    logger.info(f"Has createGenerationRequest: {hasattr(firebase_functions, 'createGenerationRequest')}")
+                    if hasattr(firebase_functions, 'createGenerationRequest'):
+                        logger.info(f"createGenerationRequest type: {type(firebase_functions.createGenerationRequest)}")
+                    # Call the function directly
+                    response = firebase_functions.createGenerationRequest(adapted_request)
                     return adapt_response(response)
                     
                 elif function_name == "getUserCredits":
-                    # Call the wrapped function directly
-                    response = main.getUserCredits._function(adapted_request)
+                    logger.info(f"Attempting to call firebase_functions.getUserCredits...")
+                    logger.info(f"firebase_functions type: {type(firebase_functions)}")
+                    logger.info(f"Has getUserCredits: {hasattr(firebase_functions, 'getUserCredits')}")
+                    if hasattr(firebase_functions, 'getUserCredits'):
+                        logger.info(f"getUserCredits type: {type(firebase_functions.getUserCredits)}")
+                    # Call the function directly
+                    response = firebase_functions.getUserCredits(adapted_request)
                     return adapt_response(response)
                     
                 elif function_name == "scheduleWeeklyReport":
@@ -105,7 +138,7 @@ def handle_request(request: Request) -> Response:
                             self.job_name = "manual-trigger"
                             self.schedule = "manual"
                     
-                    result = main.scheduleWeeklyReport(DummyEvent())
+                    result = firebase_functions.scheduleWeeklyReport(DummyEvent())
                     return make_response(json.dumps(result, default=str), 200)
                     
                 else:
