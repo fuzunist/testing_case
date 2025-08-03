@@ -16,7 +16,7 @@ def expensive_payload():
     logger.info("=== Setting up expensive_payload fixture ===")
     payload = {
         "userId": "testUserInsufficient",
-        "model": "Model B",
+        "model": "model-b",
         "style": "cyberpunk",
         "color": "neon",
         "size": "1024x1792", # Costs 4 credits

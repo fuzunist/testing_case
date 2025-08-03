@@ -15,11 +15,11 @@ def test_missing_required_fields(app_client):
     logger.info("=== Starting test_missing_required_fields ===")
     
     incomplete_payloads = [
-        {"model": "Model A", "style": "anime", "color": "vibrant", "size": "512x512"},
+        {"model": "model-a", "style": "anime", "color": "vibrant", "size": "512x512"},
         {"userId": "user1", "style": "anime", "color": "vibrant", "size": "512x512"},
-        {"userId": "user1", "model": "Model A", "color": "vibrant", "size": "512x512"},
-        {"userId": "user1", "model": "Model A", "style": "anime", "size": "512x512"},
-        {"userId": "user1", "model": "Model A", "style": "anime", "color": "vibrant"}
+        {"userId": "user1", "model": "model-a", "color": "vibrant", "size": "512x512"},
+        {"userId": "user1", "model": "model-a", "style": "anime", "size": "512x512"},
+        {"userId": "user1", "model": "model-a", "style": "anime", "color": "vibrant"}
     ]
     
     logger.info(f"Testing {len(incomplete_payloads)} incomplete payloads")
@@ -50,7 +50,7 @@ def test_invalid_enum_values(app_client):
     logger.info("=== Starting test_invalid_enum_values ===")
     
     base_payload = {
-        "userId": "user1", "model": "Model A", "style": "anime", 
+        "userId": "user1", "model": "model-a", "style": "anime", 
         "color": "vibrant", "size": "512x512", "prompt": "test"
     }
     

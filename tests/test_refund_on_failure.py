@@ -16,7 +16,7 @@ def valid_payload():
     logger.info("=== Setting up valid_payload fixture ===")
     payload = {
         "userId": "testUserRefund",
-        "model": "Model B",
+        "model": "model-b",
         "style": "sketch",
         "color": "monochrome",
         "size": "512x512", # Costs 1 credit

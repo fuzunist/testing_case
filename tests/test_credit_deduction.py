@@ -20,7 +20,7 @@ def valid_payload(managed_user):
     user_id = managed_user("testUserSuccess", credits=100)
     payload = {
         "userId": user_id,
-        "model": "Model A",
+        "model": "model-a",
         "style": "anime",
         "color": "vibrant",
         "size": "1024x1024",  # Costs 3 credits

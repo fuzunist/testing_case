@@ -31,7 +31,7 @@ def test_weekly_report_integration(app_client):
         "totalCreditsSpent": 30,
         "successRate": 80.0,
         "byModel": {
-            "Model A": {"total": 10, "completed": 8, "failed": 2, "failureRate": 20.0}
+            "model-a": {"total": 10, "completed": 8, "failed": 2, "failureRate": 20.0}
         },
         "byStyle": {}, "bySize": {}, "anomalies": [],
         "generatedAt": now - timedelta(days=7)
@@ -60,7 +60,7 @@ def test_weekly_report_integration(app_client):
             
         request_data = {
             "userId": f"user{i}",
-            "model": "Model A",
+            "model": "model-a",
             "style": "cyberpunk",
             "size": "1024x1024", # 3 credits
             "status": "completed" if is_completed else "failed",
@@ -109,24 +109,24 @@ def test_weekly_report_integration(app_client):
     
     # 2. Verify aggregation by category
     logger.info("Verifying aggregation by category...")
-    model_data = report["byModel"]["Model A"]
-    logger.info(f"Model A data: {model_data}")
+    model_data = report["byModel"]["model-a"]
+    logger.info(f"model-a data: {model_data}")
     
-    logger.info(f"Model A total: {model_data['total']} (expected: 25)")
+    logger.info(f"model-a total: {model_data['total']} (expected: 25)")
     assert model_data["total"] == 25
-    logger.info("Model A total verification passed")
+    logger.info("model-a total verification passed")
     
-    logger.info(f"Model A completed: {model_data['completed']} (expected: 13)")
+    logger.info(f"model-a completed: {model_data['completed']} (expected: 13)")
     assert model_data["completed"] == 13
-    logger.info("Model A completed verification passed")
+    logger.info("model-a completed verification passed")
     
-    logger.info(f"Model A failed: {model_data['failed']} (expected: 12)")
+    logger.info(f"model-a failed: {model_data['failed']} (expected: 12)")
     assert model_data["failed"] == 12
-    logger.info("Model A failed verification passed")
+    logger.info("model-a failed verification passed")
     
-    logger.info(f"Model A failure rate: {model_data['failureRate']}% (expected: ~48%)")
+    logger.info(f"model-a failure rate: {model_data['failureRate']}% (expected: ~48%)")
     assert 47 < model_data["failureRate"] < 49 # 12/25 = 48%
-    logger.info("Model A failure rate verification passed")
+    logger.info("model-a failure rate verification passed")
     
     # 3. Verify anomaly detection
     logger.info("Verifying anomaly detection...")
