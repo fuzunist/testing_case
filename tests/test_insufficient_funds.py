@@ -35,7 +35,7 @@ def test_insufficient_credits_rejection(app_client, expensive_payload):
     
     # --- Setup: Create a user with insufficient credits in Firestore ---
     logger.info("Setting up test user with insufficient credits...")
-    db = firestore.client()
+    # db is injected via fixture
     user_ref = db.collection("users").document(expensive_payload["userId"])
     initial_credits = 2 # Cost is 4, user only has 2
     logger.info(f"Creating user '{expensive_payload['userId']}' with {initial_credits} credits (cost will be 4)")

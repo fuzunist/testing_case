@@ -22,28 +22,65 @@ logger = logging.getLogger(__name__)
 options.set_global_options(max_instances=10)
 
 # Initialize Firebase Admin SDK
+import os
 if not firebase_admin._apps:
-    logger.info("Initializing Firebase Admin SDK with default credentials")
-    cred = credentials.ApplicationDefault()
-    firebase_admin.initialize_app(cred)
-    logger.info("Firebase Admin SDK initialized successfully")
+    try:
+        # Check if running in emulator environment
+        if (os.getenv('FIRESTORE_EMULATOR_HOST') or 
+            os.getenv('GCLOUD_PROJECT') == 'demo-case-study' or
+            os.getenv('GOOGLE_CLOUD_PROJECT') == 'demo-case-study'):
+            logger.info("Initializing Firebase Admin SDK for emulator environment")
+            # For emulator, initialize without credentials
+            firebase_admin.initialize_app(options={'projectId': 'demo-case-study'})
+            logger.info("Firebase Admin SDK initialized for emulator")
+        else:
+            logger.info("Initializing Firebase Admin SDK with default credentials")
+            cred = credentials.ApplicationDefault()
+            firebase_admin.initialize_app(cred)
+            logger.info("Firebase Admin SDK initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize with credentials, trying emulator mode: {e}")
+        # Fallback to emulator mode if credentials fail
+        firebase_admin.initialize_app(options={'projectId': 'demo-case-study'})
+        logger.info("Firebase Admin SDK initialized in fallback emulator mode")
 
-db = firestore.client()
-logger.info("Firestore client initialized")
+def get_db():
+    """Get or create Firestore client"""
+    global db
+    if 'db' not in globals():
+        try:
+            db = firestore.client()
+            logger.info("Firestore client initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize Firestore client: {e}")
+            raise
+    return db
 
-# Data for validation and cost calculation
-try:
-    logger.info("Loading initial data from Firestore collections...")
-    STYLES = {doc.id for doc in db.collection("styles").stream()}
-    COLORS = {doc.id for doc in db.collection("colors").stream()}
-    SIZES = {doc.id: doc.to_dict()["credits"] for doc in db.collection("sizes").stream()}
-    logger.info(f"Successfully loaded initial data - Styles: {len(STYLES)}, Colors: {len(COLORS)}, Sizes: {len(SIZES)}")
-    logger.debug(f"Available styles: {STYLES}")
-    logger.debug(f"Available colors: {COLORS}")
-    logger.debug(f"Available sizes and costs: {SIZES}")
-except Exception as e:
-    logger.critical(f"Could not load initial data from Firestore: {e}", exc_info=True)
-    STYLES, COLORS, SIZES = set(), set(), {}
+def get_config_data():
+    """Load configuration data from Firestore"""
+    try:
+        logger.info("Loading initial data from Firestore collections...")
+        db = get_db()
+        styles = {doc.id for doc in db.collection("styles").stream()}
+        colors = {doc.id for doc in db.collection("colors").stream()}
+        sizes = {doc.id: doc.to_dict()["credits"] for doc in db.collection("sizes").stream()}
+        logger.info(f"Successfully loaded initial data - Styles: {len(styles)}, Colors: {len(colors)}, Sizes: {len(sizes)}")
+        logger.debug(f"Available styles: {styles}")
+        logger.debug(f"Available colors: {colors}")
+        logger.debug(f"Available sizes and costs: {sizes}")
+        return styles, colors, sizes
+    except Exception as e:
+        logger.critical(f"Could not load initial data from Firestore: {e}", exc_info=True)
+        return set(), set(), {}
+
+# Global variables - initialized when first accessed
+STYLES, COLORS, SIZES = None, None, None
+
+def ensure_config_loaded():
+    """Ensure configuration data is loaded"""
+    global STYLES, COLORS, SIZES
+    if STYLES is None or COLORS is None or SIZES is None:
+        STYLES, COLORS, SIZES = get_config_data()
 
 
 @https_fn.on_request()
@@ -81,6 +118,9 @@ def createGenerationRequest(req: https_fn.Request) -> https_fn.Response:
         logger.warning(f"Missing required fields: {missing_fields}")
         return https_fn.Response(f"Missing required fields: {missing_fields}", status=400)
 
+    # Ensure config is loaded and validate
+    ensure_config_loaded()
+    
     # Validate style, color, and size
     if style not in STYLES:
         logger.warning(f"Invalid style '{style}'. Available styles: {STYLES}")
@@ -100,10 +140,12 @@ def createGenerationRequest(req: https_fn.Request) -> https_fn.Response:
 
     logger.info("Input validation passed successfully")
 
-    # 2. Calculate Credit Cost and Verify User
+    # 2. Ensure config is loaded and calculate cost
+    ensure_config_loaded()
     credit_cost = SIZES[size]
     logger.info(f"Credit cost for size '{size}': {credit_cost}")
     
+    db = get_db()
     user_ref = db.collection("users").document(user_id)
     logger.info(f"Checking if user '{user_id}' exists...")
 
@@ -228,7 +270,7 @@ def _atomic_deduct_and_generate(transaction, user_ref, credit_cost, generation_r
             "updatedAt": firestore.SERVER_TIMESTAMP,
         }
         logger.info(f"Updating generation request with: {update_data}")
-        db.collection("generationRequests").document(generation_ref.id).update(update_data)
+        get_db().collection("generationRequests").document(generation_ref.id).update(update_data)
         return generation_result["imageUrl"]
     else:
         # Refund credits on failure
@@ -237,7 +279,7 @@ def _atomic_deduct_and_generate(transaction, user_ref, credit_cost, generation_r
         
         update_data = {"status": "failed", "updatedAt": firestore.SERVER_TIMESTAMP}
         logger.info(f"Updating generation request status to 'failed': {update_data}")
-        db.collection("generationRequests").document(generation_ref.id).update(update_data)
+        get_db().collection("generationRequests").document(generation_ref.id).update(update_data)
         
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INTERNAL,
@@ -253,6 +295,7 @@ def _refund_credits(user_id, generation_id, amount):
     logger.info(f"=== Starting credit refund process ===")
     logger.info(f"Refunding {amount} credits to user '{user_id}' for generation '{generation_id}'")
     
+    db = get_db()
     user_ref = db.collection("users").document(user_id)
     
     # Note: The generation request status update was moved to the caller
@@ -314,6 +357,7 @@ def getUserCredits(req: https_fn.Request) -> https_fn.Response:
     try:
         # 2. Get User Document
         logger.info(f"Fetching user document for user '{user_id}'")
+        db = get_db()
         user_ref = db.collection("users").document(user_id)
         user_snapshot = user_ref.get()
 
@@ -381,6 +425,7 @@ def scheduleWeeklyReport(event: ScheduledEvent) -> dict:
 
         # 2. Get the latest report from the previous week for anomaly comparison
         logger.info("Fetching previous week's report for anomaly comparison")
+        db = get_db()
         previous_reports_query = db.collection("reports").order_by(
             "generatedAt", direction=firestore.Query.DESCENDING
         ).limit(1).stream()
@@ -548,3 +593,56 @@ def _detect_anomalies(current_metrics: Dict, previous_metrics: Dict) -> List[str
         logger.info(f"Total anomalies detected: {len(anomalies)}")
         
     return anomalies
+
+# Add main function for Functions Framework compatibility
+def main(req: https_fn.Request) -> https_fn.Response:
+    """
+    Main entry point for Functions Framework
+    Routes requests to appropriate handlers based on the function name
+    """
+    logger.info(f"Main function called with path: {req.path}")
+    
+    # Handle root path
+    if req.path == "/" or req.path == "":
+        return https_fn.Response(json.dumps({
+            "message": "AI Image Generation Backend API",
+            "version": "1.0.0",
+            "available_endpoints": [
+                "/demo-case-study/us-central1/createGenerationRequest",
+                "/demo-case-study/us-central1/getUserCredits",
+                "/demo-case-study/us-central1/scheduleWeeklyReport"
+            ]
+        }), status=200, mimetype="application/json")
+    
+    # Extract function name from the path
+    # Expected format: /project-id/region/function-name
+    path_parts = req.path.strip('/').split('/')
+    
+    if len(path_parts) >= 3:
+        function_name = path_parts[2]
+        logger.info(f"Routing to function: {function_name}")
+        
+        if function_name == "createGenerationRequest":
+            return createGenerationRequest(req)
+        elif function_name == "getUserCredits":
+            return getUserCredits(req)
+        elif function_name == "scheduleWeeklyReport":
+            # For testing purposes, allow manual trigger of scheduled function
+            try:
+                # Create a dummy event for manual trigger
+                class DummyEvent:
+                    def __init__(self):
+                        self.job_name = "manual-trigger"
+                        self.schedule = "manual"
+                
+                result = scheduleWeeklyReport(DummyEvent())
+                return https_fn.Response(json.dumps(result, default=str), status=200, mimetype="application/json")
+            except Exception as e:
+                logger.error(f"Error in manual scheduleWeeklyReport trigger: {e}")
+                return https_fn.Response(f"Error: {str(e)}", status=500)
+        else:
+            logger.warning(f"Unknown function name: {function_name}")
+            return https_fn.Response(f"Unknown function: {function_name}", status=404)
+    else:
+        logger.warning(f"Invalid path format: {req.path}")
+        return https_fn.Response("Invalid path format", status=400)

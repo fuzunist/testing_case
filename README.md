@@ -105,10 +105,14 @@ The entire system is designed to be run locally using the Firebase Emulator Suit
     cd functions
     source venv/bin/activate
     pip install -r requirements.txt
-    python -m functions_framework --target=main --port=5001
+    FIRESTORE_EMULATOR_HOST="127.0.0.1:8080" \
+    GCLOUD_PROJECT="demo-case-study" \
+    GOOGLE_CLOUD_PROJECT="demo-case-study" \
+    FIREBASE_AUTH_EMULATOR_HOST="127.0.0.1:9099" \
+    python -m functions_framework --target=main --source=functions_wrapper.py --port=5001
     
     # Terminal 2: Start Firebase Emulators
-    firebase emulators:start --import=./initial_data --project=demo-case-study
+    firebase emulators:start --only auth,firestore,database --import=./initial_data --project=demo-case-study
     ```
 
 3.  **Emulator UI:**

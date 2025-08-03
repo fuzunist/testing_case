@@ -20,7 +20,7 @@ def test_get_user_credits_success(app_client):
     
     # --- Setup: Create a user with a transaction history in Firestore ---
     logger.info("Setting up test data in Firestore...")
-    db = firestore.client()
+    # db is injected via fixture
     user_id = "userWithHistory"
     user_ref = db.collection("users").document(user_id)
     

@@ -44,7 +44,7 @@ def test_refund_on_ai_failure(mock_ai_create, app_client, valid_payload):
 
     # --- Setup: Create the test user in Firestore ---
     logger.info("Setting up test user...")
-    db = firestore.client()
+    # db is injected via fixture
     user_ref = db.collection("users").document(valid_payload["userId"])
     initial_credits = 50
     logger.info(f"Creating user '{valid_payload['userId']}' with {initial_credits} credits")

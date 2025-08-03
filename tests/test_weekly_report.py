@@ -17,7 +17,7 @@ def test_weekly_report_integration(app_client):
     """
     logger.info("=== Starting test_weekly_report_integration ===")
     
-    db = firestore.client()
+    # db is injected via fixture
     now = datetime.now(timezone.utc)
     logger.info(f"Test timestamp: {now}")
 

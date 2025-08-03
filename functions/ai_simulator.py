@@ -25,15 +25,33 @@ class AIChat:
         logger.info(f"Model: {model.value}")
         logger.info(f"Failure rate: {failure_rate}")
         
-        if not isinstance(model, ImageModels):
-            logger.error(f"Invalid model type provided: {type(model)}. Expected ImageModels enum.")
-            raise TypeError("model must be an instance of ImageModels Enum")
+        # Validate model - accept both enum and string values
+        if hasattr(model, 'value'):
+            model_value = model.value
+        else:
+            model_value = str(model)
+        
+        valid_model_values = ["model-a", "model-b"]
+        if model_value not in valid_model_values:
+            logger.error(f"Invalid model value: {model_value}. Expected one of: {valid_model_values}")
+            raise TypeError(f"model must be one of: {valid_model_values}")
+        
+        # Store the actual enum if possible, otherwise create it
+        if hasattr(model, 'value'):
+            self.model = model
+        else:
+            # Convert string to enum
+            from config import ImageModels
+            if model_value == "model-a":
+                self.model = ImageModels.model_a
+            elif model_value == "model-b":
+                self.model = ImageModels.model_b
         
         if not 0.0 <= failure_rate <= 1.0:
             logger.warning(f"Failure rate {failure_rate} is outside valid range [0.0, 1.0]. Clamping to valid range.")
             failure_rate = max(0.0, min(1.0, failure_rate))
         
-        self.model = model
+        # self.model is set above in validation
         self.failure_rate = failure_rate
         self.placeholder_urls = AIModelsConfig.PLACEHOLDER_URLS
         
@@ -69,7 +87,14 @@ class AIChat:
         logger.info(f"AI generation successful for model {self.model.value}")
         logger.debug(f"Random value {random_value} >= failure rate {self.failure_rate}")
         
-        image_url = self.placeholder_urls[self.model]
+        # Get image URL using the enum as key
+        try:
+            image_url = self.placeholder_urls[self.model]
+        except KeyError:
+            logger.error(f"No placeholder URL found for model: {self.model}")
+            logger.debug(f"Available keys in placeholder_urls: {list(self.placeholder_urls.keys())}")
+            # Fallback to a default URL
+            image_url = "https://via.placeholder.com/512x512?text=Generated+Image"
         logger.debug(f"Selected placeholder URL: {image_url}")
         
         success_result = {
