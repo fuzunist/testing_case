@@ -61,8 +61,8 @@ You should see a "✅ **SUCCESS: All tests passed!**" message upon completion.
 **Note**: Use `"model-a"` or `"model-b"` (lowercase), not "Model A".
 
 ```bash
-curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationRequest \
--H "Content-Type: application/json" \
+curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationRequest 
+-H "Content-Type: application/json" 
 -d '{
     "userId": "testUser1",
     "model": "model-a",
