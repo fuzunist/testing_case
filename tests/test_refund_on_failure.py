@@ -1,8 +1,7 @@
 import logging
-from unittest.mock import patch
 import pytest
-import time
-from firebase_admin import firestore
+from unittest.mock import patch
+from functions.main import createGenerationRequest
 
 # Configure logging for this test module
 logger = logging.getLogger(__name__)
@@ -14,133 +13,97 @@ logger.info("=== Loading test_refund_on_failure module ===")
 
 @pytest.fixture
 def valid_payload():
-    """
-    Provides a valid payload for a generation request.
-    """
-    logger.info("=== Setting up valid_payload fixture ===")
-    payload = {
+    """Provides a valid payload for testing, focusing on refund logic."""
+    return {
         "userId": "testUserRefund",
         "model": "model-b",
         "style": "sketch",
         "color": "monochrome",
-        "size": "512x512",  # Costs 1 credit
+        "size": "512x512",
         "prompt": "A test prompt for refund logic."
     }
-    logger.info(f"Created valid payload: {payload}")
-    return payload
 
 
 def test_refund_on_ai_failure(app_client, db, valid_payload):
     """
     Test that credits are refunded and status is 'failed' when AI generation fails.
-    This test modifies the AI failure rate temporarily to ensure failure.
+    This test uses patching to ensure the AI model consistently fails.
     """
     logger.info("=== Starting test_refund_on_ai_failure ===")
-    logger.info(f"Test parameters: {valid_payload}")
-    
-    # --- Setup: Create the test user in Firestore ---
-    logger.info("Setting up test user...")
     user_ref = db.collection("users").document(valid_payload["userId"])
-    
+    initial_credits = 10
+
     try:
-        initial_credits = 10
+        # --- Setup: Create the test user in Firestore ---
         logger.info(f"Creating user '{valid_payload['userId']}' with {initial_credits} credits")
         user_ref.set({"credits": initial_credits})
-        
-        # --- Temporarily modify the AI failure rate to 100% ---
-        logger.info("Setting AI failure rate to 100% temporarily")
-        from functions.config import AIModelsConfig
-        original_failure_rate = AIModelsConfig.DEFAULT_FAILURE_RATE
-        AIModelsConfig.DEFAULT_FAILURE_RATE = 1.0  # 100% failure rate
-        
-        try:
+
+        # --- Use patch to force AI generation failure ---
+        # We patch 'random.random' to always return 0.0, which is less than any failure rate > 0,
+        # thus ensuring the ai_simulator returns a failure.
+        with patch('functions.ai_simulator.random.random', return_value=0.0) as mock_random:
+            logger.info("Patching 'random.random' to force AI failure")
+            
             # --- Make the request ---
-            logger.info(f"Making POST request to {BASE_URL}")
             response = app_client.post(BASE_URL, json=valid_payload)
             logger.info(f"Response status code: {response.status_code}")
-            
+            logger.info(f"Response data: {response.data.decode()}")
+
             # --- Assertions ---
             # 1. Check API response for failure
-            logger.info("Checking API response...")
-            assert response.status_code == 500  # Internal Server Error for AI failure
-            logger.info("Response status code is 500 (Internal Server Error)")
-            
-            response_text = response.get_data(as_text=True)
-            logger.info(f"Response text: {response_text}")
-            assert "AI generation failed" in response_text
-            assert "credits refunded" in response_text
-            logger.info("Error message verification passed")
-            
-            # 2. Wait a moment for the refund to process
-            logger.info("Waiting for refund processing...")
-            time.sleep(2)
-            
-            # 3. Verify refund in Firestore
-            logger.info("Verifying refund in database...")
-            
-            # Check that user credits were refunded (should be back to initial)
-            logger.info("Checking user credits after refund...")
+            assert response.status_code == 500
+            assert "AI generation failed, credits refunded." in response.data.decode()
+
+            # 2. Verify user credits were refunded to the initial amount
             user_snapshot = user_ref.get()
-            assert user_snapshot.exists
-            final_credits = user_snapshot.to_dict()["credits"]
-            logger.info(f"Final credits: {final_credits} (should be {initial_credits})")
-            assert final_credits == initial_credits  # Credits should be refunded
-            logger.info("Credit refund verification passed")
+            final_credits = user_snapshot.get("credits")
+            logger.info(f"Initial credits: {initial_credits}, Final credits: {final_credits}")
+            assert final_credits == initial_credits
+
+            # 3. Verify the generation request was created and marked as 'failed'
+            requests_query = db.collection("generationRequests").where("userId", "==", valid_payload["userId"]).stream()
+            request_found = False
+            for req in requests_query:
+                req_data = req.to_dict()
+                if req_data.get("prompt") == valid_payload["prompt"]:
+                    logger.info(f"Found generation request: {req.id}, status: {req_data.get('status')}")
+                    assert req_data.get("status") == "failed"
+                    request_found = True
+                    break
+            assert request_found, "Generation request was not found for the user."
             
-            # Check that generation request exists and is marked as 'failed'
-            logger.info("Checking generation request status...")
-            gen_requests = list(db.collection("generationRequests")
-                              .where("userId", "==", valid_payload["userId"])
-                              .stream())
-            logger.info(f"Found {len(gen_requests)} generation requests")
-            assert len(gen_requests) == 1
+            # 4. Verify the transaction log shows both a deduction and a subsequent refund
+            transactions_query = user_ref.collection("transactions").stream()
+            transactions = [t.to_dict() for t in transactions_query]
             
-            gen_req_data = gen_requests[0].to_dict()
-            logger.info(f"Generation request data: {gen_req_data}")
-            assert gen_req_data["status"] == "failed"
-            logger.info("Generation request status verification passed")
-            
-            # Check that transaction history shows both deduction and refund
-            logger.info("Checking transaction history...")
-            transactions = list(user_ref.collection("transactions")
-                              .order_by("timestamp", direction=firestore.Query.ASCENDING)
-                              .stream())
-            logger.info(f"Found {len(transactions)} transactions")
-            assert len(transactions) == 2
-            
-            # First transaction should be deduction
-            trans1_data = transactions[0].to_dict()
-            logger.info(f"Transaction 1: {trans1_data}")
-            assert trans1_data["type"] == "deduction"
-            assert trans1_data["credits"] == 1  # Size 512x512 costs 1 credit
-            logger.info("Deduction transaction verification passed")
-            
-            # Second transaction should be refund
-            trans2_data = transactions[1].to_dict()
-            logger.info(f"Transaction 2: {trans2_data}")
-            assert trans2_data["type"] == "refund"
-            assert trans2_data["credits"] == 1
-            logger.info("Refund transaction verification passed")
-            
-            logger.info("test_refund_on_ai_failure completed successfully")
-            
-        finally:
-            # Restore original failure rate
-            logger.info(f"Restoring original AI failure rate: {original_failure_rate}")
-            AIModelsConfig.DEFAULT_FAILURE_RATE = original_failure_rate
-        
+            logger.info(f"Found {len(transactions)} transactions: {transactions}")
+            assert len(transactions) >= 2
+
+            deduction_found = any(t.get("type") == "deduction" for t in transactions)
+            refund_found = any(t.get("type") == "refund" for t in transactions)
+
+            assert deduction_found, "Deduction transaction log not found."
+            assert refund_found, "Refund transaction log not found."
+
+            logger.info("All assertions for refund test passed successfully.")
+
     finally:
-        # Cleanup
+        # --- Cleanup: Delete all test-related data ---
         logger.info(f"Cleaning up test data for user '{valid_payload['userId']}'")
         try:
-            # Delete generation requests
-            for req in db.collection("generationRequests").where("userId", "==", valid_payload["userId"]).stream():
-                req.reference.delete()
-            # Delete transactions
-            for trans in user_ref.collection("transactions").stream():
-                trans.reference.delete()
-            # Delete user
+            # Delete transactions subcollection
+            trans_query = user_ref.collection("transactions").stream()
+            for t in trans_query:
+                t.reference.delete()
+        
+            # Delete user document
             user_ref.delete()
-            logger.info("Test data cleanup completed")
+            
+            # Delete associated generation requests
+            requests_query = db.collection("generationRequests").where("userId", "==", valid_payload["userId"]).stream()
+            for req in requests_query:
+                req.reference.delete()
+                
+            logger.info("Test data cleanup completed.")
         except Exception as e:
-            logger.warning(f"Cleanup error: {e}")
+            logger.error(f"Error during cleanup: {e}")

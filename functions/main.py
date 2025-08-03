@@ -487,9 +487,10 @@ def scheduleWeeklyReport(event: ScheduledEvent) -> dict:
     """
     Aggregates usage data from the last week, detects anomalies by comparing
     with the previous week's report, and saves it to a 'reports' collection.
+    Returns the report as a dictionary.
     """
     logger.info(f"=== Starting weekly report generation ===")
-    logger.info(f"Event details - Job name: {getattr(event, 'job_name', 'unknown')}")
+    logger.info(f"Event details - Job name: {getattr(event, 'job_name', 'N/A')}")
 
     try:
         # 1. Define the time range for the last week
@@ -601,7 +602,8 @@ def scheduleWeeklyReport(event: ScheduledEvent) -> dict:
 
     except Exception as e:
         logger.error(f"Error generating weekly report: {e}", exc_info=True)
-        raise
+        # Return a dictionary with error info, maintaining the return type
+        return {"status": "error", "message": str(e), "anomalies": []}
 
 def _detect_anomalies(current_metrics: Dict, previous_metrics: Dict) -> List[str]:
     """Compares current metrics against previous metrics to find anomalies."""
@@ -701,20 +703,28 @@ def main(req: https_fn.Request) -> https_fn.Response:
         elif function_name == "getUserCredits":
             return getUserCredits(req)
         elif function_name == "scheduleWeeklyReport":
-            # For testing purposes, allow manual trigger of scheduled function
+            # This endpoint is for manual testing/triggering of the scheduled function.
             try:
-                # Create a dummy event for manual trigger
+                # Create a dummy event object that mimics the real ScheduledEvent
                 class DummyEvent:
                     def __init__(self):
-                        self.job_name = "manual-trigger"
-                        self.schedule = "manual"
-                        self.headers = {}  # Add headers attribute
+                        self.job_name = "manual-http-trigger"
+                        self.schedule_time = datetime.now(timezone.utc).isoformat()
+                        self.headers = {}
                 
-                result = scheduleWeeklyReport(DummyEvent())
-                return https_fn.Response(json.dumps(result, default=str), status=200, mimetype="application/json")
+                # Directly call the function, which now reliably returns a dict
+                report_dict = scheduleWeeklyReport(DummyEvent())
+                
+                # Check if the function's dictionary indicates an error
+                if report_dict.get("status") == "error":
+                    return https_fn.Response(json.dumps(report_dict), status=500, mimetype="application/json")
+                    
+                # On success, return the dictionary as a JSON response
+                return https_fn.Response(json.dumps(report_dict, default=str), status=200, mimetype="application/json")
+
             except Exception as e:
-                logger.error(f"Error in manual scheduleWeeklyReport trigger: {e}")
-                return https_fn.Response(f"Error: {str(e)}", status=500)
+                logger.error(f"Unhandled error in manual trigger for scheduleWeeklyReport: {e}", exc_info=True)
+                return https_fn.Response(json.dumps({"status": "error", "message": "An unexpected error occurred during the manual trigger."}), status=500)
         else:
             logger.warning(f"Unknown function name: {function_name}")
             return https_fn.Response(f"Unknown function: {function_name}", status=404)
