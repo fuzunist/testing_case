@@ -43,7 +43,7 @@ The services will be available at:
 
 3. Running the Automated Tests
 
-To verify the entire system's functionality, run the automated test script. This will start the emulators, run all 9 `pytest` tests, report the result, and automatically shut down all services.
+To verify that the system is working correctly, first make sure the emulators are running (using `./start-emulator.sh`), and then execute the automated test script. This script will run all `pytest` tests against the live emulators and report the result.
 
 ```bash
 ./run-tests.sh
