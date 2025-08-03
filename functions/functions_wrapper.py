@@ -63,6 +63,15 @@ class FirebaseFunctionsAdapter:
 
 def adapt_response(firebase_response):
     """Convert Firebase Functions Response to Flask Response"""
+    if hasattr(firebase_response, 'get_data'):
+        try:
+            body = firebase_response.get_data(as_text=True)
+            status = firebase_response.status_code
+            headers = firebase_response.headers
+            return make_response(body, status, headers)
+        except Exception as e:
+            logger.error(f"Error adapting response with get_data: {e}", exc_info=True)
+
     if hasattr(firebase_response, '_body') and hasattr(firebase_response, '_status'):
         # It's a Firebase Response object
         body = firebase_response._body
@@ -139,8 +148,15 @@ def handle_request(request: Request) -> Response:
                             self.schedule = "manual"
                             self.headers = {}  # Add headers attribute
                     
-                    result = firebase_functions.scheduleWeeklyReport(DummyEvent())
-                    return make_response(json.dumps(result, default=str), 200)
+                    # Directly call the function and get the https_fn.Response
+                    firebase_response = firebase_functions.scheduleWeeklyReport(DummyEvent())
+                    
+                    # Manually construct the Flask response from the https_fn.Response
+                    body = firebase_response.get_data(as_text=True)
+                    status = firebase_response.status_code
+                    headers = firebase_response.headers
+                    
+                    return make_response(body, status, headers)
                     
                 else:
                     logger.warning(f"Unknown function name: {function_name}")

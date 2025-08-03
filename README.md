@@ -17,41 +17,6 @@ The system requires the following collections to be populated in Firestore:
 - **colors**: vibrant, monochrome, pastel, neon, vintage  
 - **sizes**: 512x512 (1 credit), 1024x1024 (3 credits), 1024x1792 (4 credits)
 
-**⚠️ IMPORTANT**: After starting the emulator, you need to populate the configuration collections. Run this command:
-
-```bash
-cd functions && source venv/bin/activate && cd ..
-python3 << 'EOF'
-import os
-import firebase_admin
-from firebase_admin import credentials, firestore
-
-os.environ['FIRESTORE_EMULATOR_HOST'] = '127.0.0.1:8080'
-
-class MockCredential(credentials.Base):
-    def get_credential(self):
-        from google.oauth2 import credentials as oauth2_credentials
-        return oauth2_credentials.Credentials(token='mock-token')
-
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(credential=MockCredential(), options={'projectId': 'demo-case-study'})
-
-db = firestore.client()
-
-# Setup configuration collections
-styles = ['realistic', 'anime', 'oil painting', 'sketch', 'cyberpunk', 'watercolor']
-for style in styles: db.collection('styles').document(style).set({'name': style})
-
-colors = ['vibrant', 'monochrome', 'pastel', 'neon', 'vintage']
-for color in colors: db.collection('colors').document(color).set({'name': color})
-
-sizes = {'512x512': 1, '1024x1024': 3, '1024x1792': 4}
-for size, credits in sizes.items(): db.collection('sizes').document(size).set({'credits': credits})
-
-print("✅ Configuration collections created successfully!")
-EOF
-```
-
 The initial data export includes test users (`testUser1` with 100 credits and `testUser2` with 10 credits).
 
 ## Key Features
@@ -66,14 +31,19 @@ The initial data export includes test users (`testUser1` with 100 credits and `t
 
 ## Recent Updates & Fixes
 
-### 🔧 Latest Improvements (Aug 3, 2025)
-1. **Enhanced Error Handling**: Added proper HTTP status code mapping for Firebase errors
-2. **Improved Logging**: Added detailed logging for critical code paths.
-3. **✅ Fixed and Validated Full `pytest` Suite**:
-    - **Repaired and Validated the Full `pytest` Suite**: The entire test suite is fully operational. The weekly report integration test (`test_weekly_report_integration`) was corrected to validate outcomes by directly checking Firestore, ensuring robust testing of scheduled functions.
-    - **End-to-End Validation**: All 9 automated `pytest` tests are confirmed to be passing. The system has also been manually validated through API calls for successful generation, insufficient funds, invalid inputs, and other core scenarios.
-4. **Validated Features**:
-    - All features from the case study are now covered by automated tests.
+### 🔧 Latest Improvements (Aug 4, 2025)
+1.  **Simplified and Robust Architecture**: Removed the redundant, multi-layered routing logic between `functions_wrapper.py` and `main.py`. All API routing is now cleanly handled within `functions_wrapper.py`, making the architecture more maintainable and easier to understand.
+2.  **Flexible Configuration**: Refactored configuration handling (`config.py`) to use environment variables for key parameters like the AI model's failure rate. This moves configuration out of the code, allowing for easier changes in different environments (dev, prod) without requiring a new deployment.
+3.  **Consistent API Responses**: Fixed a critical bug where manually triggering the `scheduleWeeklyReport` endpoint returned an empty response. The issue was traced to an inconsistency in how `on_schedule` and `on_request` functions return response objects. The wrapper was updated to correctly handle the response from the scheduled function, ensuring all endpoints now return proper JSON responses.
+4.  **Enhanced Error Handling & Bug Fixes**:
+    -   Resolved a `TypeError` in the anomaly detection logic by correcting the class structure in `config.py`.
+    -   Added proper HTTP status code mapping for Firebase errors.
+5.  **Improved Logging**: Added detailed logging for critical code paths.
+6.  **✅ Fully Automated Testing**:
+    -   Introduced a `./run-tests.sh` script to fully automate the testing process (emulator startup, test execution, and cleanup).
+    -   The entire test suite is fully operational and passing.
+7.  **Fully Automated Setup**:
+    -   The initial data setup is now fully automated via the `--import` flag. The `./start-emulator.sh` script now sets up a ready-to-use environment with a single command.
 
 ---
 
@@ -96,7 +66,7 @@ The Firestore database is structured to be both scalable and easy to query.
     -   `/users/{userId}/transactions/{transactionId}`
 -   **`generationRequests`**: A root-level collection to store details of every image generation request, including status (`pending`, `completed`, `failed`), cost, and all user-selected parameters.
 -   **`reports`**: Stores the output of the `scheduleWeeklyReport` function. Each document represents a weekly summary with aggregated metrics and detected anomalies.
--   **Configuration Collections (`styles`, `colors`, `sizes`)**: These collections store the valid options for generation requests and their associated costs. This makes the system extensible—new options can be added directly to the database without any code changes.
+-   **Configuration Collections (`styles`, `colors`, `sizes`)**: These collections store the valid options for generation requests and their associated costs. They are automatically imported when the emulator starts. This makes the system extensible—new options can be added directly to the database without any code changes by exporting the data again.
 
 ### 2. Core Logic (Firebase Functions)
 
@@ -114,6 +84,12 @@ All business logic is encapsulated within Firebase Functions written in Python.
         -   An unusual spike in total requests or credit consumption (e.g., >3x the previous week).
         -   A sudden increase in the failure rate for a specific model, style, or size.
     -   The findings are stored in an `anomalies` array within the report document, making it easy to monitor system health.
+
+### 3. Architectural Refinements
+
+-   **Single Point of Routing**: Originally, the system had a multi-layered routing mechanism split between `functions_wrapper.py` and `main.py`. This has been refactored to a single, clear routing implementation in `functions_wrapper.py`. This change simplifies the request lifecycle, reduces code duplication, and makes the system easier to debug and maintain.
+-   **Consistent Response Handling**: A bug was identified where manually triggering the scheduled `scheduleWeeklyReport` function resulted in an empty HTTP response. This was due to an incompatibility between the response object generated by a scheduled function and the response handling logic in the wrapper. The fix involved manually constructing a standard Flask response, ensuring that all API endpoints, regardless of their trigger type, provide consistent and reliable JSON outputs.
+-   **Environment-Driven Configuration**: Key operational parameters, such as the AI model's failure rate, have been externalized from the code and are now configurable via environment variables (e.g., `AI_DEFAULT_FAILURE_RATE`). This follows the best practice of separating configuration from code, which is critical for managing different deployment environments (development, staging, production) and improves the system's overall flexibility.
 
 ---
 
@@ -160,11 +136,9 @@ The entire system is designed to be run locally using the Firebase Emulator Suit
     - Set up the Python virtual environment
     - Install all dependencies
     - Start Python Functions Framework
-    - Start Firebase Emulators with initial data
+    - Start Firebase Emulators with all initial data (users and configurations) automatically imported.
     - Verify all services are running
     - Display test commands
-
-    **⚠️ IMPORTANT**: After the emulator starts, run the configuration setup script (see "Initial Data Configuration" section above) to populate the required collections.
 
 2.  **Manual Start (Alternative):**
     If you prefer to start services manually:
@@ -232,6 +206,7 @@ curl -X POST http://127.0.0.1:5001/demo-case-study/us-central1/createGenerationR
 - `400 Bad Request`: "Insufficient credits." - When user doesn't have enough credits
 - `400 Bad Request`: "Invalid model 'Model A'. Please use one of ['model-a', 'model-b']" - Wrong model format
 - `500 Internal Server Error`: "AI generation failed, credits refunded." - When AI simulation fails (credits are automatically refunded)
+- `200 OK`: A full JSON response containing the generated weekly report.
 
 ### 2. Get User Credits
 
@@ -245,28 +220,55 @@ You can trigger the scheduled function manually via the Emulator UI or its direc
 ```bash
 curl -X GET "http://127.0.0.1:5001/demo-case-study/us-central1/scheduleWeeklyReport"
 ```
+**Expected Response:**
+```json
+{
+    "totalRequests": 5,
+    "totalCreditsSpent": 10,
+    "totalCreditsRefunded": 0,
+    "successRate": 100.0,
+    "byModel": { ... },
+    "byStyle": { ... },
+    "bySize": { ... },
+    "anomalies": [ ... ],
+    "generatedAt": "..."
+}
+```
 
 ---
 
 ## Running the Automated Tests
 
-### Automated pytest Tests (Recommended)
+The most reliable way to verify all system functionalities is by using the automated test script.
 
-The project includes a comprehensive and **fully functional** test suite using `pytest`. This is the recommended way to validate the entire system's functionality.
+### One-Command Testing (Recommended)
 
-**To run the tests:**
+A dedicated script, `run-tests.sh`, has been created to automate the entire testing process. This is the recommended way to run the tests as it handles the complete lifecycle: starting emulators, running tests, and cleaning up afterward.
 
-1.  Make sure the emulators are running (`./start-emulator.sh`).
-2.  Ensure the configuration data has been populated (see "Initial Data Configuration" section).
-3.  Run the full test suite from the project root:
+**To run the full test suite:**
 
-    ```bash
-    # Ensure the virtual environment is active if you opened a new terminal
-    source functions/venv/bin/activate
+```bash
+./run-tests.sh
+```
+
+This script will:
+1.  **Start** all necessary Firebase emulators and Python functions in the background.
+2.  **Wait** for the services to initialize.
+3.  **Execute** the entire `pytest` suite against the live emulators.
+4.  **Report** a clear "✅ SUCCESS" or "❌ FAILURE" message.
+5.  **Automatically shut down** and clean up all background processes.
+
+### Manual Test Execution (Alternative)
+
+If you prefer to run the tests manually while the services are already running (e.g., via `./start-emulator.sh`), you can use the following command:
+
+```bash
+# Ensure the virtual environment is active if you opened a new terminal
+source functions/venv/bin/activate
     
-    # Run the full test suite
-    FIRESTORE_EMULATOR_HOST="127.0.0.1:8080" pytest
-    ```
+# Run the full test suite
+FIRESTORE_EMULATOR_HOST="127.0.0.1:8080" pytest
+```
 
 The test suite covers:
 -   Input validation for `createGenerationRequest`
@@ -287,7 +289,7 @@ Following extensive testing and debugging, the system is now **fully validated**
 - **AI Model Simulation**: Both success and failure scenarios work as expected.
 - **Automatic Refunds**: Credits are correctly refunded to the user upon AI generation failure, with all database records updated atomically.
 - **Input Validation**: All API parameters (`model`, `style`, `color`, `size`) are validated.
-- **Weekly Reporting**: The scheduled function correctly aggregates data, calculates metrics, and performs anomaly detection.
+- **Weekly Reporting**: The scheduled function correctly aggregates data, calculates metrics, and performs anomaly detection. The manual trigger now returns a full JSON report.
 - **Full Test Coverage**: All 9 automated `pytest` tests are **passing**.
 
 ### ✅ Ready for Evaluation
@@ -300,11 +302,11 @@ All previously identified limitations have been resolved. The system has been th
 
 ### Common Issues
 
-1. **"Invalid style/color/size" Errors**
-   - **SOLUTION**: Run the configuration setup script provided in the "Initial Data Configuration" section above. The collections must be populated after starting the emulator.
+1.  **"Invalid style/color/size" Errors**
+    - **SOLUTION**: This error should no longer occur, as all configuration data is now automatically imported when the emulator starts using `./start-emulator.sh`. If you are running the system manually, ensure you use `firebase emulators:start --import=./initial_data`.
 
-2. **"Invalid model 'Model A'" Error**
-   - **SOLUTION**: Use lowercase kebab-case format: `"model-a"` or `"model-b"`. The system expects this format, not "Model A".
+2.  **"Invalid model 'Model A'" Error**
+    - **SOLUTION**: Use lowercase kebab-case format: `"model-a"` or `"model-b"`. The system expects this format, not "Model A".
 
 3. **"Your default credentials were not found" Error**
    - **SOLUTION**: This should not happen when using the provided scripts, as they configure the emulator environment. If running manually, ensure `FIRESTORE_EMULATOR_HOST` is set to `127.0.0.1:8080`.

@@ -483,7 +483,7 @@ def getUserCredits(req: https_fn.Request) -> https_fn.Response:
 
 
 @on_schedule(schedule="every monday 00:00")
-def scheduleWeeklyReport(event: ScheduledEvent) -> dict:
+def scheduleWeeklyReport(event: ScheduledEvent) -> https_fn.Response:
     """
     Aggregates usage data from the last week, detects anomalies by comparing
     with the previous week's report, and saves it to a 'reports' collection.
@@ -598,12 +598,22 @@ def scheduleWeeklyReport(event: ScheduledEvent) -> dict:
         logger.info(f"Successfully generated and saved weekly report: {report_ref.id}")
         logger.info(f"Report summary - Total requests: {report['totalRequests']}, Success rate: {report['successRate']:.2f}%, Credits spent: {report['totalCreditsSpent']}, Credits refunded: {report['totalCreditsRefunded']}")
         
-        return report
+        # Return the report as a JSON response
+        return https_fn.Response(
+            json.dumps(report, default=str),
+            status=200,
+            mimetype="application/json"
+        )
 
     except Exception as e:
         logger.error(f"Error generating weekly report: {e}", exc_info=True)
         # Return a dictionary with error info, maintaining the return type
-        return {"status": "error", "message": str(e), "anomalies": []}
+        error_response = {"status": "error", "message": str(e), "anomalies": []}
+        return https_fn.Response(
+            json.dumps(error_response),
+            status=500,
+            mimetype="application/json"
+        )
 
 def _detect_anomalies(current_metrics: Dict, previous_metrics: Dict) -> List[str]:
     """Compares current metrics against previous metrics to find anomalies."""
@@ -669,65 +679,3 @@ def _detect_anomalies(current_metrics: Dict, previous_metrics: Dict) -> List[str
         logger.info(f"Total anomalies detected: {len(anomalies)}")
         
     return anomalies
-
-# Add main function for Functions Framework compatibility
-def main(req: https_fn.Request) -> https_fn.Response:
-    """
-    Main entry point for Functions Framework
-    Routes requests to appropriate handlers based on the function name
-    """
-    logger.info(f"Main function called with path: {req.path}")
-    
-    # Handle root path
-    if req.path == "/" or req.path == "":
-        return https_fn.Response(json.dumps({
-            "message": "AI Image Generation Backend API",
-            "version": "1.0.0",
-            "available_endpoints": [
-                "/demo-case-study/us-central1/createGenerationRequest",
-                "/demo-case-study/us-central1/getUserCredits",
-                "/demo-case-study/us-central1/scheduleWeeklyReport"
-            ]
-        }), status=200, mimetype="application/json")
-    
-    # Extract function name from the path
-    # Expected format: /project-id/region/function-name
-    path_parts = req.path.strip('/').split('/')
-    
-    if len(path_parts) >= 3:
-        function_name = path_parts[2]
-        logger.info(f"Routing to function: {function_name}")
-        
-        if function_name == "createGenerationRequest":
-            return createGenerationRequest(req)
-        elif function_name == "getUserCredits":
-            return getUserCredits(req)
-        elif function_name == "scheduleWeeklyReport":
-            # This endpoint is for manual testing/triggering of the scheduled function.
-            try:
-                # Create a dummy event object that mimics the real ScheduledEvent
-                class DummyEvent:
-                    def __init__(self):
-                        self.job_name = "manual-http-trigger"
-                        self.schedule_time = datetime.now(timezone.utc).isoformat()
-                        self.headers = {}
-                
-                # Directly call the function, which now reliably returns a dict
-                report_dict = scheduleWeeklyReport(DummyEvent())
-                
-                # Check if the function's dictionary indicates an error
-                if report_dict.get("status") == "error":
-                    return https_fn.Response(json.dumps(report_dict), status=500, mimetype="application/json")
-                    
-                # On success, return the dictionary as a JSON response
-                return https_fn.Response(json.dumps(report_dict, default=str), status=200, mimetype="application/json")
-
-            except Exception as e:
-                logger.error(f"Unhandled error in manual trigger for scheduleWeeklyReport: {e}", exc_info=True)
-                return https_fn.Response(json.dumps({"status": "error", "message": "An unexpected error occurred during the manual trigger."}), status=500)
-        else:
-            logger.warning(f"Unknown function name: {function_name}")
-            return https_fn.Response(f"Unknown function: {function_name}", status=404)
-    else:
-        logger.warning(f"Invalid path format: {req.path}")
-        return https_fn.Response("Invalid path format", status=400)

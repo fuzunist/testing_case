@@ -1,5 +1,6 @@
 import logging
 from enum import Enum
+import os
 
 # Configure logging for config module
 logger = logging.getLogger(__name__)
@@ -7,10 +8,7 @@ logger = logging.getLogger(__name__)
 logger.info("Loading configuration module...")
 
 class ImageModels(Enum):
-    """
-    Enumeration for the available AI models.
-    This is the single source of truth for model names.
-    """
+    """Enum for the available AI models."""
     model_a = "model-a"
     model_b = "model-b"
 
@@ -18,29 +16,12 @@ logger.info(f"ImageModels enum loaded with values: {[model.value for model in Im
 
 
 class AnomalyThresholds:
-    """
-    Constants for detecting anomalies in weekly reports.
-    These values can be tuned to adjust sensitivity without changing logic.
-    """
-    # A factor to determine a significant drop in success rate.
-    # e.g., 0.5 means a drop to less than 50% of the previous week's rate is an anomaly.
-    SUCCESS_RATE_DROP_RATIO = 0.5
-
-    # A multiplier to detect a spike in usage.
-    # e.g., 3 means more than 3x the requests/credits of the previous week is an anomaly.
-    USAGE_SPIKE_MULTIPLIER = 3.0
-
-    # The minimum number of requests from a previous period required to perform
-    # a reliable anomaly comparison.
-    MIN_SAMPLES_FOR_ANOMALY = 10
-
-    # A baseline failure rate percentage that is considered significant.
-    # An anomaly is only flagged if the new failure rate is above this value.
-    SIGNIFICANT_FAILURE_RATE = 20.0
-
-    # A multiplier for detecting a spike in the failure rate of a specific category.
-    # e.g., 2.0 means the failure rate has more than doubled.
-    FAILURE_RATE_SPIKE_MULTIPLIER = 2.0
+    """Constants for detecting anomalies in weekly reports."""
+    SUCCESS_RATE_DROP_RATIO = 0.5  # e.g., if success rate drops to 50% of last week's
+    USAGE_SPIKE_MULTIPLIER = 3.0  # e.g., if usage is 3x higher than last week
+    MIN_SAMPLES_FOR_ANOMALY = 10  # Minimum number of requests to trigger spike alerts
+    SIGNIFICANT_FAILURE_RATE = 20.0  # A failure rate that is considered high on its own
+    FAILURE_RATE_SPIKE_MULTIPLIER = 2.0  # e.g., if failure rate is 2x higher than last week
 
 logger.info("AnomalyThresholds loaded with values:")
 logger.info(f"  - SUCCESS_RATE_DROP_RATIO: {AnomalyThresholds.SUCCESS_RATE_DROP_RATIO}")
@@ -55,7 +36,7 @@ class AIModelsConfig:
     Configuration for the AI model simulator.
     """
     # Default failure rate for the AI simulation.
-    DEFAULT_FAILURE_RATE = 0.05
+    DEFAULT_FAILURE_RATE = float(os.getenv("AI_DEFAULT_FAILURE_RATE", 0.05))
 
     # Placeholder URLs for each simulated model.
     PLACEHOLDER_URLS = {

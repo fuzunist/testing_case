@@ -1,5 +1,8 @@
 import random
 import logging
+from typing import Dict, Any
+import os
+
 from config import ImageModels, AIModelsConfig
 
 # Configure logging for AI simulator module
@@ -47,12 +50,8 @@ class AIChat:
             elif model_value == "model-b":
                 self.model = ImageModels.model_b
         
-        if not 0.0 <= failure_rate <= 1.0:
-            logger.warning(f"Failure rate {failure_rate} is outside valid range [0.0, 1.0]. Clamping to valid range.")
-            failure_rate = max(0.0, min(1.0, failure_rate))
-        
-        # self.model is set above in validation
-        self.failure_rate = failure_rate
+        # Use the configured failure rate, allowing override via environment variable for testing.
+        self.failure_rate = float(os.getenv("AI_FAILURE_RATE", AIModelsConfig.DEFAULT_FAILURE_RATE))
         self.placeholder_urls = AIModelsConfig.PLACEHOLDER_URLS
         
         logger.info(f"AIChat simulator initialized successfully for {model.value}")
@@ -69,24 +68,12 @@ class AIChat:
         logger.info(f"Model: {self.model.value}")
         logger.info(f"Failure rate: {self.failure_rate}")
         
-        # Generate random number for failure simulation
-        random_value = random.random()
-        logger.info(f"Random value generated: {random_value}")
-        logger.info(f"Comparison: {random_value} < {self.failure_rate} = {random_value < self.failure_rate}")
+        # Simulate a potential failure based on the configured rate.
+        if random.random() < self.failure_rate:
+            logger.warning(f"AI model {self.model.value} simulation FAILED (failure rate: {self.failure_rate * 100}%)")
+            return {"success": False, "error": "AI model simulation failed."}
         
-        if random_value < self.failure_rate:
-            logger.warning(f"AI generation failed for model {self.model.value}")
-            logger.info(f"Random value {random_value} < failure rate {self.failure_rate}")
-            
-            error_result = {
-                "success": False,
-                "error": "AI generation failed due to a simulated error."
-            }
-            logger.info(f"Returning failure result: {error_result}")
-            return error_result
-        
-        logger.info(f"AI generation successful for model {self.model.value}")
-        logger.info(f"Random value {random_value} >= failure rate {self.failure_rate}")
+        logger.info(f"AI model {self.model.value} simulation SUCCEEDED.")
         
         # Get image URL using the enum as key
         try:

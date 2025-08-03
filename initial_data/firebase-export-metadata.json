@@ -4,5 +4,13 @@
     "version": "1.19.8",
     "path": "firestore_export",
     "metadata_file": "firestore_export/firestore_export.overall_export_metadata"
+  },
+  "database": {
+    "version": "4.11.2",
+    "path": "database_export"
+  },
+  "auth": {
+    "version": "14.11.1",
+    "path": "auth_export"
   }
 }
