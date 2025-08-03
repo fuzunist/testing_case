@@ -82,10 +82,10 @@ done
 
 # Set environment variables for emulator first
 echo "🔧 Setting up emulator environment..."
-export FIRESTORE_EMULATOR_HOST="127.0.0.1:8080"
+export FIRESTORE_EMULATOR_HOST="0.0.0.0:8080"
 export GCLOUD_PROJECT="demo-case-study"
 export GOOGLE_CLOUD_PROJECT="demo-case-study"
-export FIREBASE_AUTH_EMULATOR_HOST="127.0.0.1:9099"
+export FIREBASE_AUTH_EMULATOR_HOST="0.0.0.0:9099"
 
 # Start Python Functions in background
 echo "🐍 Starting Python Functions..."
@@ -98,10 +98,10 @@ source venv/bin/activate
 pip install -q -r requirements.txt
 
 # Start functions with environment variables
-FIRESTORE_EMULATOR_HOST="127.0.0.1:8080" \
+FIRESTORE_EMULATOR_HOST="0.0.0.0:8080" \
 GCLOUD_PROJECT="demo-case-study" \
 GOOGLE_CLOUD_PROJECT="demo-case-study" \
-FIREBASE_AUTH_EMULATOR_HOST="127.0.0.1:9099" \
+FIREBASE_AUTH_EMULATOR_HOST="0.0.0.0:9099" \
 python -m functions_framework --target=main --source=main.py --port=5001 --debug &
 FUNCTIONS_PID=$!
 cd ..
@@ -112,7 +112,7 @@ sleep 5
 
 # Start Firebase Emulators
 echo "🔥 Starting Firebase Emulators..."
-firebase emulators:start --only auth,firestore,database --import=./initial_data --project=demo-case-study &
+firebase emulators:start --only auth,firestore --import=./initial_data --project=demo-case-study --debug &
 EMULATOR_PID=$!
 
 # Wait for emulators to fully start
